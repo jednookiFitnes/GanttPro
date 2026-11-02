@@ -54,6 +54,8 @@ export interface TaskCardConfig {
 	showPriority: boolean;
 	/** 显示文件位置 */
 	showFileLocation: boolean;
+	/** 显示所属文件夹 */
+	showFolder?: boolean;
 	/** 显示警告图标 */
 	showWarning: boolean;
 	/** 显示 ticktick（%%content%%） */

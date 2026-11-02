@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from 'react-dom';
 import { DateTimePickerClasses, setCssProps } from '../../utils/bem';
 import { formatDate } from '../../dateUtils/dateUtilsIndex';
-import { i18n } from '../../i18n/i18n';
+import { i18n, isChineseLanguage } from '../../i18n/i18n';
 import { Icon } from './Icon';
 
 export interface DateTimePickerProps {
@@ -222,7 +222,7 @@ export function DateTimePicker({ value, onChange, placeholder }: DateTimePickerP
 	const weekdayNames = i18n.t('sidebar.dailyTimeline.weekdays') as unknown as string[];
 	// 周一为首日：i18n 数组为周日索引，取一~六 + 周日；去掉"周"前缀只留汉字
 	const weekdays = useMemo(
-		() => [1, 2, 3, 4, 5, 6, 0].map(i => weekdayNames[i].replace(/^周/, '')),
+		() => [1, 2, 3, 4, 5, 6, 0].map(i => isChineseLanguage() ? weekdayNames[i].replace(/^周/, '') : weekdayNames[i]),
 		[weekdayNames]
 	);
 	const monthLabel = i18n.t('modals.dateTimePicker.monthFormat', { year: viewYear, month: viewMonth });

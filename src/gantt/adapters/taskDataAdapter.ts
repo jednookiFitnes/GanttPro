@@ -69,7 +69,7 @@ export class TaskDataAdapter {
 
 		return {
 			id: id ?? this.generateTaskId(task),
-			name: task.description || '无标题任务',
+			name: task.description || (isPolishLanguage() ? 'Zadanie bez tytułu' : (isChineseLanguage() ? '无标题任务' : 'Untitled task')),
 			timeLabel: buildIntervalTimeLabel(
 				startDate, normalizedEndDate,
 				task.datePrecision?.[startField] === 'time',
@@ -215,9 +215,8 @@ export class TaskDataAdapter {
 		}
 
 		// 优先级
-		if (task.priority) {
-			classes.push(`priority-${task.priority}`);
-		}
+		const pKey = (task.priority || 'normal').toLowerCase();
+		classes.push(`priority-${pKey}`);
 
 		// 自定义状态
 		if (task.status) {

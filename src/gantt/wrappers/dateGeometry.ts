@@ -5,8 +5,7 @@
  * 由 GanttGeometry 类封装渲染器的共享尺寸配置（columnWidth、granularity）。
  */
 
-import type { TimeGranularity } from '../types';
-import { GRANULARITY_CONFIGS } from '../types';
+import { TimeGranularity, GRANULARITY_CONFIGS } from '../types';
 
 /**
  * 甘特图几何计算所需的共享尺寸配置
@@ -30,8 +29,12 @@ export function parseLocalDate(dateStr: string): Date {
 
 /**
  * 单元索引 -> Date
+ * Używamy czystej arytmetyki kalendarzowej, aby uniknąć anomalii DST (np. 25-godzinnej doby przy zmianie czasu jesienią)
  */
 export function getDateForUnit(minDate: Date, unitIndex: number, granularity: TimeGranularity): Date {
+	if (!granularity || (granularity as string) === 'day' || granularity === TimeGranularity.DAY) {
+		return new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate() + unitIndex);
+	}
 	const config = GRANULARITY_CONFIGS[granularity];
 	return new Date(minDate.getTime() + unitIndex * config.milliseconds);
 }
@@ -53,9 +56,14 @@ export function isMajorGridLine(unitIndex: number, _granularity: TimeGranularity
 }
 
 /**
- * 根据开始日期查找对应的网格单元索引（向上取整）
+ * 根据开始日期查找对应的网格单元索引
  */
 export function findStartGridUnitIndex(startDate: Date, minDate: Date, config: GanttGeometryConfig): number {
+	if (!config.granularity || (config.granularity as string) === 'day' || config.granularity === TimeGranularity.DAY) {
+		const utcStart = Date.UTC(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+		const utcMin = Date.UTC(minDate.getFullYear(), minDate.getMonth(), minDate.getDate());
+		return Math.round((utcStart - utcMin) / 86400000);
+	}
 	const normalized = new Date(startDate);
 	normalized.setHours(0, 0, 0, 0);
 	const offsetUnits = (normalized.getTime() - minDate.getTime()) / GRANULARITY_CONFIGS[config.granularity].milliseconds;
@@ -66,6 +74,11 @@ export function findStartGridUnitIndex(startDate: Date, minDate: Date, config: G
  * 根据结束日期查找对应的网格单元索引（加一天确保包含结束日当天）
  */
 export function findEndGridUnitIndex(endDate: Date, minDate: Date, config: GanttGeometryConfig): number {
+	if (!config.granularity || (config.granularity as string) === 'day' || config.granularity === TimeGranularity.DAY) {
+		const utcEnd = Date.UTC(endDate.getFullYear(), endDate.getMonth(), endDate.getDate() + 1);
+		const utcMin = Date.UTC(minDate.getFullYear(), minDate.getMonth(), minDate.getDate());
+		return Math.round((utcEnd - utcMin) / 86400000);
+	}
 	const normalized = new Date(endDate);
 	normalized.setHours(0, 0, 0, 0);
 	normalized.setDate(normalized.getDate() + 1);

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type JSX } from 'react';
+import { createPortal } from 'react-dom';
 import type { Dispatch, SetStateAction, DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { Notice } from 'obsidian';
-import type { GCTask } from '../../../types';
+import { type GCTask, getTaskDateField } from '../../../types';
 import type { DateFieldType } from '../../../settings/types';
 import type { TaskCardConfig } from '../../../components/TaskCard/TaskCardConfig';
 import { WeekViewClasses, ContextMenuClasses, setCssProps } from '../../../utils/bem';
@@ -14,6 +15,7 @@ import { updateTaskProperties } from '../../../tasks/taskUpdater';
 import { isVirtualTask } from '../../../tasks/virtualTaskGenerator';
 import type { TaskUpdates } from '../../../tasks/taskSerializer';
 import { openCreateTaskModal } from '../../modals/TaskFormModal';
+import { getPriorityBarColor } from '../../../tasks/taskGrouper';
 import { i18n } from '../../../i18n/i18n';
 import { Logger } from '../../../utils/logger';
 import {
@@ -30,10 +32,13 @@ import {
 	formatMinutes,
 	DAY_PX,
 	MIN_DURATION_MIN,
+	DEFAULT_POINT_DURATION_MIN,
 	MINUTES_PER_DAY,
 } from './timelineModel';
+
 import { useBlockResize, isBlockResizing, setBlockDragMeta, getBlockDragMeta, clearBlockDragMeta } from './useBlockResize';
 import { useCanvasTouchDrag } from './useCanvasTouchDrag';
+import { resolveTaskFromDrop } from '../../utils/taskDropResolver';
 
 /** 全天行单行高度（卡片 24px + 间距 4px，与 CSS 令牌对应） */
 const ALLDAY_ROW_PX = 28;
@@ -240,19 +245,20 @@ export function WeekTimelineGrid({
 		const updates: Partial<Record<DateFieldType, Date>> = {};
 		let precision: Partial<Record<DateFieldType, 'day' | 'time'>> = {};
 
-		if (interval && interval.kind === 'point') {
-			// 拖动点任务 = 双写起止并自动升级为区间任务：
-			// 跨天拖动时若只写锚点字段（如仅 📅），残留的旧 🛫 仅日期字段会让任务
-			// 变成 ≥24h 跨日区间；上边缘落点为起点，+ 时长为终点，两端均 time 精度
-			const durationMin = Math.round((interval.end.getTime() - interval.start.getTime()) / 60000);
-			const anchorMin = Math.max(0, Math.min(minutes, MINUTES_PER_DAY - durationMin));
-			updates[startField] = atMinutes(day, anchorMin);
-			updates[endField] = atMinutes(day, anchorMin + durationMin);
-			precision = { [startField]: 'time', [endField]: 'time' };
-		} else if (interval) {
-			// 区间任务：块上边缘落到落点后整体平移，day 精度端点保持整天语义。
-			// 仅原本就同日的区间才做"当日容纳"钳制——跨夜区间允许继续跨夜
-			const durationMin = Math.round((interval.end.getTime() - interval.start.getTime()) / 60000);
+		const durationMin = interval
+			? Math.round((interval.end.getTime() - interval.start.getTime()) / 60000)
+			: 0;
+
+		const startIsTime = task.datePrecision?.[startField] === 'time';
+		const endIsTime = task.datePrecision?.[endField] === 'time';
+
+		const isExistingTimedBlock = interval
+			&& interval.kind === 'interval'
+			&& durationMin < MINUTES_PER_DAY
+			&& startIsTime
+			&& endIsTime;
+
+		if (isExistingTimedBlock) {
 			const dayOf = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime(); };
 			const sameDayOrigin = dayOf(interval.start) === dayOf(interval.end);
 			const anchorMin = sameDayOrigin && durationMin <= MINUTES_PER_DAY
@@ -260,21 +266,58 @@ export function WeekTimelineGrid({
 				: minutes;
 			const newStart = atMinutes(day, anchorMin);
 			const shiftMs = newStart.getTime() - interval.start.getTime();
-			const startIsTime = task.datePrecision?.[startField] === 'time';
-			const endIsTime = task.datePrecision?.[endField] === 'time';
-			updates[startField] = startIsTime ? newStart : atMinutes(newStart, 0);
+			updates[startField] = newStart;
 			const shiftedEnd = new Date(interval.end.getTime() + shiftMs);
-			updates[endField] = endIsTime ? shiftedEnd : atMinutes(shiftedEnd, 0);
-			precision = { ...task.datePrecision };
+			updates[endField] = shiftedEnd;
+			precision = { [startField]: 'time', [endField]: 'time' };
+		} else if (interval && interval.kind === 'point') {
+			const pDuration = Math.round((interval.end.getTime() - interval.start.getTime()) / 60000);
+			const anchorMin = Math.max(0, Math.min(minutes, MINUTES_PER_DAY - pDuration));
+			updates[startField] = atMinutes(day, anchorMin);
+			updates[endField] = atMinutes(day, anchorMin + pDuration);
+			precision = { [startField]: 'time', [endField]: 'time' };
 		} else {
-			// 全天任务 / 外部视图拖入：落点即时刻（dateField 转 time 精度）；
-			// 对端钳制：落点越过对端点所在日时钳到对端点日（保留落点时刻），避免制造倒置数据
-			updates[dateField] = clampSingleFieldWrite(task, dateField, atMinutes(day, minutes), startField, endField);
-			precision = { [dateField]: 'time' };
+			// 全天任务 / 从 ALL DAY 拖入 / 外部视图拖入：
+			// 必须添加 start time 和 due time（转为当日时间块）
+			const startMin = Math.max(0, Math.min(minutes, MINUTES_PER_DAY - MIN_DURATION_MIN));
+			updates[startField] = atMinutes(day, startMin);
+			precision[startField] = 'time';
+
+			let targetEndMin: number | null = null;
+			const existingEndVal = getTaskDateField(task, endField) || getTaskDateField(task, dateField);
+			const existingEndPrecision = task.datePrecision?.[endField] || task.datePrecision?.[dateField];
+			if (existingEndVal && existingEndPrecision === 'time') {
+				const endDayMs = new Date(existingEndVal).setHours(0, 0, 0, 0);
+				const targetDayMs = new Date(day).setHours(0, 0, 0, 0);
+				if (endDayMs === targetDayMs) {
+					const existingMinutes = existingEndVal.getHours() * 60 + existingEndVal.getMinutes();
+					if (existingMinutes >= startMin + MIN_DURATION_MIN) {
+						targetEndMin = existingMinutes;
+					}
+				}
+			}
+
+			if (targetEndMin === null) {
+				const daySegs = (model.days[dayIndex] || []).map((s) => s.seg);
+				targetEndMin = clampForwardPointEnd(startMin, daySegs, DEFAULT_POINT_DURATION_MIN);
+				if (targetEndMin < startMin + MIN_DURATION_MIN) {
+					targetEndMin = Math.min(startMin + DEFAULT_POINT_DURATION_MIN, MINUTES_PER_DAY);
+				}
+			}
+
+			if (startField !== endField) {
+				updates[endField] = atMinutes(day, targetEndMin);
+				precision[endField] = 'time';
+			}
+
+			if (dateField !== startField && dateField !== endField) {
+				updates[dateField] = updates[endField] ?? atMinutes(day, targetEndMin);
+				precision[dateField] = 'time';
+			}
 		}
 
 		void persistTaskUpdate(task, updates, precision, 'views.dayView.updateTimeFailed');
-	}, [dayDate, atMinutes, startField, endField, dateField, persistTaskUpdate]);
+	}, [dayDate, atMinutes, startField, endField, dateField, model.days, persistTaskUpdate]);
 
 	// ===== 全天行拖放：转全天（day 精度） =====
 	const commitAlldayMove = useCallback((task: GCTask, dayIndex: number): void => {
@@ -341,10 +384,13 @@ export function WeekTimelineGrid({
 			const grid = gridRef.current;
 			if (!grid) return;
 			const line = grid.querySelector<HTMLElement>(`.${WeekViewClasses.elements.currentTimeLine}`);
-			const col = grid.querySelector<HTMLElement>(`.${WeekViewClasses.elements.dayCol}`);
-			if (!line || !col) return;
+			const todayCol = grid.querySelector<HTMLElement>(`.${WeekViewClasses.modifiers.dayColToday}`)
+				|| grid.querySelector<HTMLElement>(`.${WeekViewClasses.elements.dayCol}`);
+			if (!line || !todayCol) return;
 			const now = new Date();
-			line.style.top = `${col.offsetTop + minutesToPx(now.getHours() * 60 + now.getMinutes())}px`;
+			line.style.top = `${todayCol.offsetTop + minutesToPx(now.getHours() * 60 + now.getMinutes())}px`;
+			line.style.left = `${todayCol.offsetLeft}px`;
+			line.style.width = `${todayCol.offsetWidth}px`;
 			setCssProps(line, { display: 'block' });
 		};
 		draw();
@@ -385,14 +431,13 @@ export function WeekTimelineGrid({
 	const handleAlldayDrop = useCallback((e: ReactDragEvent) => {
 		e.preventDefault();
 		setAlldayDragDay(null);
-		const taskId = e.dataTransfer?.getData('taskId');
-		if (!taskId) return;
-		const task = findTaskById(tasks, taskId);
+		const allTasks = plugin?.taskCache?.getAllTasks() || tasks;
+		const task = resolveTaskFromDrop(e.dataTransfer, allTasks, app);
 		if (!task) return;
 		const rect = e.currentTarget.getBoundingClientRect();
 		const dayIndex = Math.max(0, Math.min(6, Math.floor(((e.clientX - rect.left) / rect.width) * 7)));
 		commitAlldayMove(task, dayIndex);
-	}, [tasks, commitAlldayMove]);
+	}, [tasks, commitAlldayMove, plugin, app]);
 
 	const handleCardRefresh = useCallback(() => refreshTasks(), [refreshTasks]);
 
@@ -413,14 +458,29 @@ export function WeekTimelineGrid({
 			<div className={WeekViewClasses.elements.headerSpacer} style={{ gridColumn: '1', gridRow: '1' }} />
 			{visibleIdxs.map((dayIdx, pos) => {
 				const day = days[dayIdx];
+				const vacation = plugin.vacationService?.getVacation(day.date);
+				const headerClasses = [
+					WeekViewClasses.elements.headerCell,
+					day.isToday ? WeekViewClasses.modifiers.today : '',
+					vacation ? WeekViewClasses.modifiers.headerCellVacation : '',
+				].filter(Boolean).join(' ');
 				return (
 					<div
 						key={`week-h-${dayIdx}`}
-						className={`${WeekViewClasses.elements.headerCell}${day.isToday ? ` ${WeekViewClasses.modifiers.today}` : ''}`}
+						className={headerClasses}
 						style={{ gridColumn: `${pos + 2}`, gridRow: '1' }}
+						title={vacation ? `🏖️ URLOP: ${vacation.type}${vacation.project ? ` (${vacation.project})` : ''}${vacation.remarks ? ` — ${vacation.remarks}` : ''}` : undefined}
 					>
 						<div className={WeekViewClasses.elements.dayName}>{dayNames[day.weekday]}</div>
-						<div className={WeekViewClasses.elements.dayNumber}>{day.day.toString()}</div>
+						<div className={`${WeekViewClasses.elements.dayNumber}${vacation ? ` ${WeekViewClasses.modifiers.dayNumberVacation}` : ''}`}>
+							{day.day.toString()}
+						</div>
+						{vacation ? (
+							<span
+								className={WeekViewClasses.elements.vacationDot}
+								title={`🏖️ URLOP: ${vacation.type}${vacation.project ? ` (${vacation.project})` : ''}`}
+							/>
+						) : null}
 						{day.lunarText && showLunar ? (
 							<div className={WeekViewClasses.elements.lunarText}>{day.lunarText}</div>
 						) : null}
@@ -434,18 +494,38 @@ export function WeekTimelineGrid({
 			</div>
 			<div
 				className={WeekViewClasses.elements.alldayRow}
-				style={{ gridColumn: '2 / -1', gridRow: '2', height: `${alldayRowHeight}px` }}
+				style={{
+					gridColumn: '2 / -1',
+					gridRow: '2',
+					height: `${alldayRowHeight}px`,
+				}}
 				onDragOver={handleAlldayDragOver}
 				onDragLeave={handleAlldayDragLeave}
 				onDrop={handleAlldayDrop}
 			>
 				{visibleIdxs.map((dayIdx, pos) => {
 					const day = days[dayIdx];
+					const vacation = plugin.vacationService?.getVacation(day.date);
+					const alldayClasses = [
+						WeekViewClasses.elements.alldayCell,
+						day.isToday ? WeekViewClasses.modifiers.alldayCellToday : '',
+						alldayDragDay === dayIdx ? WeekViewClasses.modifiers.alldayCellDragOver : '',
+						vacation ? WeekViewClasses.modifiers.alldayCellVacation : '',
+					].filter(Boolean).join(' ');
 					return (
 						<div
 							key={`week-ac-${dayIdx}`}
-							className={`${WeekViewClasses.elements.alldayCell}${day.isToday ? ` ${WeekViewClasses.modifiers.alldayCellToday}` : ''}${alldayDragDay === dayIdx ? ` ${WeekViewClasses.modifiers.alldayCellDragOver}` : ''}`}
-							style={{ left: `${(pos / colCount) * 100}%`, width: `${100 / colCount}%` }}
+							data-day-idx={dayIdx}
+							className={alldayClasses}
+							style={{
+								position: 'absolute',
+								gridColumn: `${pos + 1}`,
+								top: 0,
+								bottom: 0,
+								left: 0,
+								right: 0,
+							}}
+							title={vacation ? `🏖️ URLOP: ${vacation.type}${vacation.project ? ` (${vacation.project})` : ''}` : undefined}
 						/>
 					);
 				})}
@@ -455,14 +535,15 @@ export function WeekTimelineGrid({
 					const clampedStart = Math.max(bar.startDayIndex, visibleIdxs[0]);
 					const clampedEnd = Math.min(bar.endDayIndex, visibleIdxs[colCount - 1]);
 					if (clampedStart > clampedEnd) return null;
-					const spanCount = clampedEnd - clampedStart + 1;
 					return (
 						<div
 							key={`week-ab-${taskKey(bar.task)}`}
 							className={`${WeekViewClasses.elements.alldayBar}${bar.continuesBefore || clampedStart > bar.startDayIndex ? ` ${WeekViewClasses.modifiers.alldayBarContinuesBefore}` : ''}${bar.continuesAfter || clampedEnd < bar.endDayIndex ? ` ${WeekViewClasses.modifiers.alldayBarContinuesAfter}` : ''}${bar.stackedIndex > 0 ? ` ${WeekViewClasses.modifiers.alldayBarStacked}` : ''}`}
 							style={{
-								left: `calc(${((clampedStart - visibleIdxs[0]) / colCount) * 100}% + 2px)`,
-								width: `calc(${(spanCount / colCount) * 100}% - 4px)`,
+								position: 'absolute',
+								gridColumn: `${clampedStart - visibleIdxs[0] + 1} / ${clampedEnd - visibleIdxs[0] + 2}`,
+								left: '2px',
+								right: '2px',
 								top: `${bar.lane * ALLDAY_ROW_PX + (bar.stackedIndex > 0 ? 3 : 0)}px`,
 								zIndex: bar.stackedIndex > 0 ? 3 : 1,
 							}}
@@ -549,7 +630,10 @@ export function WeekTimelineGrid({
 
 /** 事件目标是否位于时间块内（块上的事件不触发空白创建/ghost） */
 function isInsideBlock(target: EventTarget | null): boolean {
-	return !!(target instanceof Element && target.closest(`.${WeekViewClasses.elements.timeBlock}`));
+	return !!(
+		target instanceof Element &&
+		(target.closest(`.${WeekViewClasses.elements.timeBlock}`) || target.closest('.gc-week-view__more-badge'))
+	);
 }
 
 /**
@@ -583,6 +667,7 @@ interface DayColumnProps {
 	tasks: GCTask[];
 	hideTooltip: () => void;
 	onCardRefresh: () => void;
+	isCollapsed?: boolean;
 }
 
 function DayColumn({
@@ -604,7 +689,10 @@ function DayColumn({
 	tasks,
 	hideTooltip,
 	onCardRefresh,
+	isCollapsed,
 }: DayColumnProps): JSX.Element {
+	const plugin = usePlugin();
+	const vacation = plugin.vacationService?.getVacation(day.date);
 	const colRef = useRef<HTMLDivElement | null>(null);
 	const ghostRef = useRef<HTMLDivElement | null>(null);
 	const ghostLabelRef = useRef<HTMLSpanElement | null>(null);
@@ -721,6 +809,143 @@ function DayColumn({
 
 	cancelCreateRef.current = cancelCreate;
 
+	// ===== Klastrowanie zadań nakładających się w czasie (Opcja 2: Popover +N więcej) =====
+	const MAX_CASCADE_VISIBLE = 3;
+
+	interface RawCluster {
+		id: string;
+		startMin: number;
+		endMin: number;
+		items: DaySegment[];
+	}
+
+	const { displayBlocks, overflowClusters, activeClusters } = useMemo(() => {
+		if (!daySegs || daySegs.length === 0) {
+			return { displayBlocks: [], overflowClusters: [], activeClusters: new Map<string, RawCluster>() };
+		}
+
+		// 1. Sortuj wg czasu rozpoczęcia
+		const sorted = [...daySegs].sort(
+			(a, b) => a.seg.startMin - b.seg.startMin || a.seg.endMin - b.seg.endMin
+		);
+
+		const clusters: RawCluster[] = [];
+		let current: RawCluster | null = null;
+
+		for (const item of sorted) {
+			if (!current || item.seg.startMin >= current.endMin) {
+				current = {
+					id: `cluster-d${dayIndex}-${item.seg.startMin}-${item.seg.endMin}-${clusters.length}`,
+					startMin: item.seg.startMin,
+					endMin: item.seg.endMin,
+					items: [item],
+				};
+				clusters.push(current);
+			} else {
+				current.items.push(item);
+				current.endMin = Math.max(current.endMin, item.seg.endMin);
+			}
+		}
+
+		const clusterMap = new Map<string, RawCluster>();
+		const overflowList: Array<{
+			id: string;
+			startMin: number;
+			endMin: number;
+			extraCount: number;
+			items: DaySegment[];
+		}> = [];
+		const visibleBlocks: Array<{
+			block: TimeBlock;
+			seg: TimeBlockSegment;
+			clusterId: string;
+			isExtraHidden?: boolean;
+		}> = [];
+
+		for (const cl of clusters) {
+			clusterMap.set(cl.id, cl);
+			const total = cl.items.length;
+
+			// Posortuj zadania wewnątrz klastra wg lane
+			const clusterItemsSorted = [...cl.items].sort((a, b) => a.seg.lane - b.seg.lane || a.seg.stackedIndex - b.seg.stackedIndex);
+
+			if (total > MAX_CASCADE_VISIBLE) {
+				overflowList.push({
+					id: cl.id,
+					startMin: cl.startMin,
+					endMin: cl.endMin,
+					extraCount: total - MAX_CASCADE_VISIBLE,
+					items: clusterItemsSorted,
+				});
+				// Pokaż dokładnie pierwsze 3 karty w kaskadzie
+				clusterItemsSorted.slice(0, MAX_CASCADE_VISIBLE).forEach((item) => {
+					visibleBlocks.push({
+						block: item.block,
+						seg: item.seg,
+						clusterId: cl.id,
+					});
+				});
+			} else {
+				// Wszystkie karty widoczne normalnie
+				clusterItemsSorted.forEach((item) => {
+					visibleBlocks.push({
+						block: item.block,
+						seg: item.seg,
+						clusterId: cl.id,
+					});
+				});
+			}
+		}
+
+		return { displayBlocks: visibleBlocks, overflowClusters: overflowList, activeClusters: clusterMap };
+	}, [daySegs, dayIndex]);
+
+	const [openCluster, setOpenCluster] = useState<{
+		id: string;
+		startMin: number;
+		endMin: number;
+		items: DaySegment[];
+		anchorRect: DOMRect;
+	} | null>(null);
+
+	// Synchronizuj otwarty popover przy zmianie modelu (np. po zaznaczeniu checkboxa)
+	useEffect(() => {
+		if (!openCluster) return;
+		const updated = activeClusters.get(openCluster.id);
+		if (updated) {
+			setOpenCluster((prev) => (prev ? { ...prev, items: updated.items } : null));
+		}
+	}, [displayBlocks, activeClusters]);
+
+	// Zamknij popover na Escape
+	useEffect(() => {
+		if (!openCluster) return;
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') setOpenCluster(null);
+		};
+		window.addEventListener('keydown', onKeyDown);
+		return () => window.removeEventListener('keydown', onKeyDown);
+	}, [openCluster]);
+
+	const handleBadgeClick = useCallback((
+		e: React.MouseEvent,
+		clusterItems: DaySegment[],
+		startMin: number,
+		endMin: number,
+		clusterId: string
+	) => {
+		e.stopPropagation();
+		e.preventDefault();
+		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		setOpenCluster({
+			id: clusterId,
+			startMin,
+			endMin,
+			items: clusterItems,
+			anchorRect: rect,
+		});
+	}, []);
+
 	const handleMouseDown = useCallback((e: ReactPointerEvent) => {
 		if (e.button !== 0 || isInsideBlock(e.target)) return;
 		// 菜单打开期间：列内的首次点击仅负责关闭菜单，不启动创建
@@ -780,11 +1005,10 @@ function DayColumn({
 		setDropLine(null);
 		setDropPreview(null);
 		setDragOverCol(null);
-		const taskId = e.dataTransfer?.getData('taskId');
-		if (!taskId) return;
-		const task = findTaskById(tasks, taskId);
+		const allTasks = plugin?.taskCache?.getAllTasks() || tasks;
+		const task = resolveTaskFromDrop(e.dataTransfer, allTasks, app);
 		if (!task) {
-			Logger.error('WeekTimelineGrid', 'Drop source task not found:', taskId);
+			Logger.error('WeekTimelineGrid', 'Drop source task not found:', e.dataTransfer?.getData('taskId'));
 			return;
 		}
 		// 块拖动：指针 - 抓取偏移 = 块上边缘位置；外部拖入：指针即块顶
@@ -793,12 +1017,20 @@ function DayColumn({
 		onBlockMove(task, dayIndex, minutesFromEvent(topEdgeClientY));
 	}, [tasks, dayIndex, minutesFromEvent, onBlockMove, setDropLine, setDropPreview]);
 
+	const colClasses = [
+		WeekViewClasses.elements.dayCol,
+		day.isToday ? WeekViewClasses.modifiers.dayColToday : '',
+		dragOverCol === dayIndex ? WeekViewClasses.modifiers.dayColDragOver : '',
+		vacation ? WeekViewClasses.modifiers.dayColVacation : '',
+	].filter(Boolean).join(' ');
+
 	return (
 		<div
 			ref={colRef}
-			className={`${WeekViewClasses.elements.dayCol}${day.isToday ? ` ${WeekViewClasses.modifiers.dayColToday}` : ''}${dragOverCol === dayIndex ? ` ${WeekViewClasses.modifiers.dayColDragOver}` : ''}`}
+			className={colClasses}
 			data-day-idx={dayIndex}
 			style={{ gridColumn: `${colPos + 2}`, gridRow: '3', height: `${DAY_PX}px` }}
+			title={vacation ? `🏖️ URLOP: ${vacation.type}${vacation.project ? ` (${vacation.project})` : ''}` : undefined}
 			onPointerMove={handleMouseMove}
 			onMouseLeave={handleMouseLeave}
 			onPointerDown={handleMouseDown}
@@ -806,21 +1038,54 @@ function DayColumn({
 			onDragLeave={handleDragLeave}
 			onDrop={handleDrop}
 		>
-			{daySegs.map(({ block, seg }) => {
+			{displayBlocks.map((item) => {
+				if (item.isExtraHidden) return null;
+				const { block, seg } = item;
 				const durationMin = seg.endMin - seg.startMin;
 				const resizable = !isVirtualTask(block.task);
+				const isOverlapped = seg.laneCount > 1;
+
+				let leftStyle: string;
+				let widthStyle: string;
+				let zIndexVal = seg.lane + (seg.stackedIndex > 0 ? 4 : 2);
+
+				if (isOverlapped) {
+					// Kaskada ze schodkowym przesunięciem (Problem 1: Opcja A)
+					const laneStepPercent = Math.min(18, 42 / (seg.laneCount - 1 || 1));
+					const leftOffset = seg.lane * laneStepPercent;
+					const cardWidth = Math.max(74, 100 - (seg.laneCount - 1) * laneStepPercent);
+
+					leftStyle = `calc(${leftOffset}% + ${(seg.stackedIndex > 0 ? seg.stackedIndex * 3 : 0) + 1}px)`;
+					widthStyle = `calc(${cardWidth}% - 2px)`;
+				} else {
+					leftStyle = `calc(${(seg.lane / seg.laneCount) * 100}% + ${(seg.stackedIndex > 0 ? seg.stackedIndex * 3 : 0) + 1}px)`;
+					widthStyle = `calc(${100 / seg.laneCount}% - 2px)`;
+				}
+
 				const cls = [
 					WeekViewClasses.elements.timeBlock,
 					seg.continuesBefore ? WeekViewClasses.modifiers.timeBlockContinuesBefore : '',
 					seg.continuesAfter ? WeekViewClasses.modifiers.timeBlockContinuesAfter : '',
 					seg.stackedIndex > 0 ? WeekViewClasses.modifiers.timeBlockStacked : '',
+					durationMin < 45 ? 'gc-week-view__time-block--single-line' : '',
+					durationMin < 20 ? 'gc-week-view__time-block--tiny' : '',
+					isOverlapped ? 'gc-week-view__time-block--cascade' : '',
+					isOverlapped ? 'gc-week-view__time-block--overlapped' : '',
+					`priority-${(block.task.priority || 'normal').toLowerCase()}`,
+					block.task.completed ? 'is-completed' : '',
 				].filter(Boolean).join(' ');
+
+				const priorityColor = block.task.completed
+					? 'var(--gc-task-completed, #52c41a)'
+					: getPriorityBarColor(block.task.priority);
+
 				const style: CSSProperties = {
 					top: `${minutesToPx(seg.startMin)}px`,
 					height: `${minutesToPx(durationMin)}px`,
-					left: `calc(${(seg.lane / seg.laneCount) * 100}% + ${(seg.stackedIndex > 0 ? seg.stackedIndex * 3 : 0) + 1}px)`,
-					width: `calc(${100 / seg.laneCount}% - 2px)`,
-					zIndex: seg.lane + (seg.stackedIndex > 0 ? 4 : 1),
+					left: leftStyle,
+					width: widthStyle,
+					zIndex: zIndexVal,
+					'--priority-bar-color': priorityColor,
 				};
 				return (
 					<div
@@ -880,6 +1145,29 @@ function DayColumn({
 					</div>
 				);
 			})}
+			{/* Plakietki "+N więcej" dla klastrów o > 3 zadaniach (Opcja 2) */}
+			{overflowClusters.map((cl) => {
+				const topPx = minutesToPx(cl.startMin);
+				return (
+					<button
+						key={`badge-${cl.id}`}
+						type="button"
+						className="gc-week-view__more-badge"
+						style={{
+							top: `${topPx + 3}px`,
+							right: '4px',
+						}}
+						title={i18n.t('sidebar.dailyTimeline.clusterModalTitle')}
+						onPointerDown={(e) => e.stopPropagation()}
+						onPointerMove={(e) => e.stopPropagation()}
+						onMouseEnter={hideGhost}
+						onClick={(e) => handleBadgeClick(e, cl.items, cl.startMin, cl.endMin, cl.id)}
+					>
+						<Icon icon="layers" className="gc-week-view__more-icon" />
+						<span>{i18n.t('sidebar.dailyTimeline.moreTasks', { count: cl.extraCount })}</span>
+					</button>
+				);
+			})}
 			{/* 拖放吸附指示线（仅外部来源拖入显示；块拖动用落点预览块） */}
 			{dropLine?.dayIndex === dayIndex ? (
 				<div
@@ -903,6 +1191,59 @@ function DayColumn({
 				<span ref={ghostLabelRef} className={WeekViewClasses.elements.ghostLabel} />
 				<span className={WeekViewClasses.elements.ghostPlus}><Icon icon="plus" /></span>
 			</div>
+			{/* Popover ze wszystkimi zadaniami w klastrze (Opcja 2) */}
+			{openCluster && createPortal(
+				<div
+					className="gc-cluster-popover-backdrop"
+					onClick={() => setOpenCluster(null)}
+				>
+					<div
+						className="gc-cluster-popover"
+						style={{
+							position: 'fixed',
+							top: `${Math.min(window.innerHeight - 340, Math.max(12, openCluster.anchorRect.bottom + 6))}px`,
+							left: `${Math.max(12, Math.min(window.innerWidth - 320, openCluster.anchorRect.right - 280))}px`,
+						}}
+						onClick={(e) => e.stopPropagation()}
+					>
+						<div className="gc-cluster-popover__header">
+							<div className="gc-cluster-popover__title">
+								<Icon icon="clock" className="gc-cluster-popover__icon" />
+								<span>{`${formatMinutes(openCluster.startMin)} – ${formatMinutes(openCluster.endMin)}`}</span>
+								<span className="gc-cluster-popover__count">
+									{openCluster.items.length}
+								</span>
+							</div>
+							<button
+								type="button"
+								className="clickable-icon gc-cluster-popover__close"
+								onClick={() => setOpenCluster(null)}
+								aria-label="Close"
+							>
+								<Icon icon="x" />
+							</button>
+						</div>
+
+						<div className="gc-cluster-popover__list">
+							{openCluster.items.map(({ block }) => (
+								<div
+									key={`${block.task.filePath}:${block.task.lineNumber}`}
+									className={`gc-cluster-popover__item priority-${(block.task.priority || 'normal').toLowerCase()}${block.task.completed ? ' is-completed' : ''}`}
+								>
+									<TaskCard
+										task={block.task}
+										config={config}
+										targetDate={day.date}
+										onClick={hideTooltip}
+										onRefresh={onCardRefresh}
+									/>
+								</div>
+							))}
+						</div>
+					</div>
+				</div>,
+				document.body
+			)}
 		</div>
 	);
 }

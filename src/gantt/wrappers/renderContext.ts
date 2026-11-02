@@ -20,7 +20,7 @@ export interface TaskDragState {
 	originalEnd: Date | null;
 	taskMinDate: Date | null;
 	hasMoved: boolean;
-	barElement: SVGRectElement | null;
+	barElement: SVGElement | null;
 	leftHandleElement: SVGRectElement | null;
 	rightHandleElement: SVGRectElement | null;
 	leftVisualElement: SVGRectElement | null;

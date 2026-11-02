@@ -73,7 +73,7 @@ export class LinkRenderer {
 				const displayText = m.groups[2] || notePath; // 优先使用别名
 				const link = container.createEl('a', { text: displayText, cls: 'gc-link gc-link--obsidian' });
 				link.setAttr('data-href', notePath);
-				link.setAttr('title', `打开：${notePath}`);
+				link.setAttr('title', isPolishLanguage() ? `Otwórz: ${notePath}` : (isChineseLanguage() ? `打开：${notePath}` : `Open: ${notePath}`));
 				link.href = 'javascript:void(0)';
 				link.addEventListener('click', (e) => {
 					e.preventDefault();

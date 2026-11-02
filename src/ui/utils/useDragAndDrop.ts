@@ -106,8 +106,8 @@ export function useDropTarget(options: DropTargetOptions): DropTargetProps {
 			el.classList.remove(activeClassRef.current);
 		}
 		currentRef.current = null;
-		const taskId = e.dataTransfer?.getData('taskId');
-		if (taskId) onDropRef.current(taskId, e);
+		const taskId = e.dataTransfer?.getData('taskId') || '';
+		onDropRef.current(taskId, e);
 	}, []);
 
 	return {

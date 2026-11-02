@@ -143,6 +143,34 @@
 	color: var(--text-faint);
 }
 
+/* Dzień urlopowy w widoku roku: subtelna czerwona szrafura + obrys i akcent pomarańczowy */
+.gc-year-view__day--vacation {
+	background-color: color-mix(in srgb, var(--gc-vacation-color, #f97316) 14%, var(--background-primary)) !important;
+	background-image: repeating-linear-gradient(
+		-45deg,
+		rgba(239, 68, 68, 0.20) 0,
+		rgba(239, 68, 68, 0.20) 1.5px,
+		transparent 1.5px,
+		transparent 6px
+	) !important;
+	outline: 1px solid var(--gc-vacation-color, #f97316);
+	outline-offset: -1px;
+}
+
+.gc-year-view__day-number--vacation {
+	color: var(--gc-vacation-color, #f97316) !important;
+	font-weight: 700 !important;
+}
+
+.gc-year-view__vacation-dot {
+	width: 4px;
+	height: 4px;
+	border-radius: 50%;
+	background-color: var(--gc-vacation-color, #f97316);
+	flex-shrink: 0;
+	margin-top: 1px;
+}
+
 /* ==================== 响应式设计 ==================== */
 
 /* 小屏幕适配 */

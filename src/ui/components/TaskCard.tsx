@@ -17,16 +17,10 @@ import { isTouchNow } from '../utils/platform';
 import { updateTaskCompletion } from '../../tasks/taskUpdater';
 import { completeRecurringTask } from '../../tasks/recurringTaskCompleter';
 import { openEditTaskModal } from '../modals/TaskFormModal';
-import { createNoteFromTask } from '../../contextMenu/commands/createNoteFromTask';
-import { createNoteFromTaskAlias } from '../../contextMenu/commands/createNoteFromTaskAlias';
-import { postponeTask } from '../../contextMenu/commands/postponeTask';
-import { cancelTask } from '../../contextMenu/commands/cancelTask';
-import { restoreTask } from '../../contextMenu/commands/restoreTask';
-import { deleteTask } from '../../contextMenu/commands/deleteTask';
-import { setTaskStatus } from '../../contextMenu/commands/setTaskStatus';
-import { setTaskPriority } from '../../contextMenu/commands/setPriority';
+import { buildTaskContextMenuSections } from './taskContextMenu';
 import { i18n } from '../../i18n/i18n';
 import { Logger } from '../../utils/logger';
+import { extractFolderName, extractFullFolderPath, getPriorityBarColor } from '../../tasks/taskGrouper';
 
 export interface ReactTaskCardProps {
 	task: GCTask;
@@ -80,18 +74,33 @@ export const TaskCard = memo(function TaskCard({ task, config, targetDate, onCli
 		const viewKey = `${config.viewModifier}View` as keyof typeof TaskCardClasses.modifiers;
 		const mod = TaskCardClasses.modifiers[viewKey];
 		if (mod) list.push(mod);
-		if (config.variant === 'timeline') list.push(TaskCardClasses.modifiers.timeline);
+		if (config.variant === 'timeline') {
+			list.push(TaskCardClasses.modifiers.timeline);
+			list.push(`priority-${(task.priority || 'normal').toLowerCase()}`);
+		}
 		if (config.compact) list.push(TaskCardClasses.modifiers.compact);
 		if (virtual) list.push(TaskCardClasses.modifiers.virtual);
 		else if (task.repeat) list.push(TaskCardClasses.modifiers.recurring);
 		list.push(task.completed ? TaskCardClasses.modifiers.completed : TaskCardClasses.modifiers.pending);
 		// 有任务状态（含已完成）时添加 task-with-status，激活 CSS 变量卡片着色
-		if (task.status) list.push('task-with-status');
+		if (task.status && config.variant !== 'timeline') list.push('task-with-status');
 		return list;
-	}, [config.viewModifier, config.variant, config.compact, virtual, task.repeat, task.completed, task.status]);
+	}, [config.viewModifier, config.variant, config.compact, virtual, task.repeat, task.completed, task.status, task.priority]);
 
-	// ===== 状态颜色 =====
+	// ===== 状态 / 优先级颜色 =====
 	const style = useMemo<CSSProperties | undefined>(() => {
+		if (config.variant === 'timeline') {
+			const priorityColor = task.completed
+				? 'var(--gc-task-completed, #52c41a)'
+				: getPriorityBarColor(task.priority);
+			const isMedium = !task.completed && (task.priority || '').toLowerCase() === 'medium';
+			return {
+				'--task-bg-color': priorityColor,
+				'--priority-bar-color': priorityColor,
+				'--task-text-color': isMedium ? '#18181b' : '#ffffff',
+			} as CSSProperties;
+		}
+
 		if (!task.status) return undefined;
 		const statuses = plugin.settings?.taskStatuses || DEFAULT_TASK_STATUSES;
 		const colors = getStatusColor(task.status, statuses, getCurrentThemeMode());
@@ -100,7 +109,7 @@ export const TaskCard = memo(function TaskCard({ task, config, targetDate, onCli
 			'--task-bg-color': colors.bg,
 			'--task-text-color': colors.text,
 		} as CSSProperties;
-	}, [task.status, plugin.settings]);
+	}, [config.variant, task.completed, task.priority, task.status, plugin.settings]);
 
 	// ===== 富文本描述 =====
 	const description = useMemo(() => {
@@ -122,134 +131,8 @@ export const TaskCard = memo(function TaskCard({ task, config, targetDate, onCli
 	// ===== 右键菜单（声明式 sections，复用 contextMenu 命令模块） =====
 	const menuSections = useMemo<ContextMenuSection[]>(() => {
 		if (virtual) return [];
-		const enabledFormats = plugin.settings.enabledTaskFormats || ['tasks'];
-		const taskNotePath = plugin.settings.taskNotePath || 'Tasks';
-		const refresh = onRefresh || (() => {});
-		const isCancelled = task.cancelled === true;
-
-		const priorities: Array<{ value: 'highest' | 'high' | 'medium' | 'low' | 'lowest' | 'normal'; label: string; icon: string }> = [
-			{ value: 'highest', label: i18n.t('common.priority.highest'), icon: '🔺' },
-			{ value: 'high', label: i18n.t('common.priority.high'), icon: '⏫' },
-			{ value: 'medium', label: i18n.t('common.priority.medium'), icon: '🔼' },
-			{ value: 'normal', label: i18n.t('common.priority.normal'), icon: '◽' },
-			{ value: 'low', label: i18n.t('common.priority.low'), icon: '🔽' },
-			{ value: 'lowest', label: i18n.t('common.priority.lowest'), icon: '⏬' },
-		];
-		const postponeOptions = [
-			{ days: 1, label: i18n.t('contextMenu.postpone.days1') },
-			{ days: 3, label: i18n.t('contextMenu.postpone.days3') },
-			{ days: 7, label: i18n.t('contextMenu.postpone.days7') },
-		];
-		const setDueDateOptions = [
-			{ days: 1, label: i18n.t('contextMenu.setDueDate.tomorrow') },
-			{ days: 3, label: i18n.t('contextMenu.setDueDate.days3') },
-			{ days: 7, label: i18n.t('contextMenu.setDueDate.days7') },
-		];
-
-		return [
-			{
-				items: [{
-					key: 'edit',
-					title: i18n.t('contextMenu.editTask'),
-					icon: 'pencil',
-					onClick: () => {
-						openEditTaskModal(app, task, enabledFormats, refresh, true);
-					},
-				}],
-			},
-			{
-				items: [
-					{
-						key: 'createNote',
-						title: i18n.t('contextMenu.createNote'),
-						icon: 'file-plus',
-						onClick: () => {
-							void createNoteFromTask(app, task, taskNotePath, enabledFormats);
-						},
-					},
-					{
-						key: 'createNoteAlias',
-						title: i18n.t('contextMenu.createNoteAlias'),
-						icon: 'file-plus',
-						onClick: () => {
-							void createNoteFromTaskAlias(app, task, taskNotePath, enabledFormats);
-						},
-					},
-				],
-			},
-			{
-				items: priorities.map((p) => ({
-					key: `priority-${p.value}`,
-					title: `${p.icon} ${p.label}`,
-					onClick: () => {
-						void setTaskPriority(app, task, p.value, enabledFormats, refresh);
-					},
-				})),
-			},
-			{
-				items: [
-					{
-						key: 'statusImportant',
-						title: i18n.t('contextMenu.statusImportant'),
-						onClick: () => {
-							void setTaskStatus(app, task, 'important', enabledFormats, refresh);
-						},
-					},
-					{
-						key: 'statusQuestion',
-						title: i18n.t('contextMenu.statusQuestion'),
-						onClick: () => {
-							void setTaskStatus(app, task, 'question', enabledFormats, refresh);
-						},
-					},
-				],
-			},
-			{
-				items: [
-					...postponeOptions.map((o) => ({
-						key: `postpone-${o.days}`,
-						title: o.label,
-						icon: 'calendar-clock',
-						onClick: () => {
-							void postponeTask(app, task, o.days, enabledFormats, refresh, false);
-						},
-					})),
-					...setDueDateOptions.map((o) => ({
-						key: `due-${o.days}`,
-						title: o.label,
-						icon: 'calendar-check',
-						onClick: () => {
-							void postponeTask(app, task, o.days, enabledFormats, refresh, true);
-						},
-					})),
-				],
-			},
-			{
-				items: [
-					{
-						key: 'cancelRestore',
-						title: isCancelled ? i18n.t('contextMenu.restoreTask') : i18n.t('contextMenu.cancelTask'),
-						icon: isCancelled ? 'rotate-ccw' : 'x',
-						onClick: () => {
-							if (isCancelled) {
-								void restoreTask(app, task, enabledFormats, refresh);
-							} else {
-								void cancelTask(app, task, enabledFormats, refresh);
-							}
-						},
-					},
-					{
-						key: 'delete',
-						title: i18n.t('contextMenu.deleteTask'),
-						icon: 'trash',
-						onClick: () => {
-							void deleteTask(app, task, refresh);
-						},
-					},
-				],
-			},
-		];
-	}, [task, app, plugin.settings.enabledTaskFormats, plugin.settings.taskNotePath, virtual, onRefresh]);
+		return buildTaskContextMenuSections(app, plugin, task, onRefresh);
+	}, [virtual, app, plugin, task, onRefresh]);
 
 	// ===== 拖拽（useDragSource 封装） =====
 	const dragProps = useDragSource({
@@ -367,6 +250,23 @@ export const TaskCard = memo(function TaskCard({ task, config, targetDate, onCli
 		</div>
 	) : null;
 
+	const folder = useMemo(() => {
+		if (!config.showFolder) return null;
+		const folderName = extractFolderName(task.filePath);
+		if (!folderName || folderName === 'Bez przypisania' || folderName === 'Katalog główny') {
+			return null;
+		}
+		return (
+			<span
+				className={TaskCardClasses.elements.folder}
+				title={`Folder: ${extractFullFolderPath(task.filePath)}`}
+			>
+				<span className={TaskCardClasses.elements.folderIcon}>📁</span>
+				<span className={TaskCardClasses.elements.folderName}>{folderName}</span>
+			</span>
+		);
+	}, [config.showFolder, task.filePath]);
+
 	const fileLocation = config.showFileLocation ? (
 		<span className={TaskCardClasses.elements.file}>{`${task.fileName}:${task.lineNumber}`}</span>
 	) : null;
@@ -400,8 +300,8 @@ export const TaskCard = memo(function TaskCard({ task, config, targetDate, onCli
 				}
 			}}
 			onMouseLeave={() => tooltip.hide()}
-			onContextMenu={() => tooltip.cancel()}
-		>
+			onContextMenu={() => tooltip.cancel()}>
+			{folder}
 			{config.showCheckbox ? (
 				<input
 					type="checkbox"

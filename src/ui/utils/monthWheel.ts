@@ -26,14 +26,23 @@ export function createMonthWheelStep({
 	cooldownMs = WHEEL_COOLDOWN_MS,
 }: MonthWheelStepOptions = {}) {
 	let acc = 0;
+	let lastEventAt = -Infinity;
 	let lastSwitchAt = -Infinity;
 
 	return (deltaY: number, deltaMode: number, now: number): MonthWheelDirection => {
 		if (now - lastSwitchAt < cooldownMs) return 0;
+		if (now - lastEventAt > 300) {
+			acc = 0;
+		}
+		lastEventAt = now;
+
 		if (deltaMode === 1) deltaY *= 33;
 		if (deltaMode === 2) {
 			const dir = Math.sign(deltaY) as MonthWheelDirection;
-			if (dir !== 0) lastSwitchAt = now;
+			if (dir !== 0) {
+				lastSwitchAt = now;
+				acc = 0;
+			}
 			return dir;
 		}
 		if (deltaY === 0) return 0;

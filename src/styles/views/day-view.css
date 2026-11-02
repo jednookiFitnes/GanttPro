@@ -48,6 +48,50 @@
 	min-height: 0;
 }
 
+/* ==================== Day View Vacation Banner ==================== */
+.gc-day-view__vacation-banner {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	margin-bottom: 8px;
+	border-radius: var(--gc-radius-md, 6px);
+	border: 1px solid var(--gc-vacation-color, #f97316);
+	background-color: color-mix(in srgb, var(--gc-vacation-color, #f97316) 10%, var(--background-primary));
+	background-image: repeating-linear-gradient(
+		-45deg,
+		rgba(239, 68, 68, 0.12) 0,
+		rgba(239, 68, 68, 0.12) 2px,
+		transparent 2px,
+		transparent 8px
+	);
+	color: var(--text-normal);
+	font-size: var(--font-ui-small, 12px);
+	font-weight: 500;
+	flex-shrink: 0;
+}
+
+.gc-day-view__vacation-icon {
+	font-size: 15px;
+	line-height: 1;
+}
+
+.gc-day-view__vacation-title {
+	font-weight: 600;
+	color: var(--gc-vacation-color, #f97316);
+}
+
+.gc-day-view__vacation-project {
+	color: var(--text-muted);
+	font-size: 11px;
+}
+
+.gc-day-view__vacation-remarks {
+	color: var(--text-muted);
+	font-style: italic;
+	font-size: 11px;
+}
+
 /* ==================== Day View Timeline ==================== */
 .gc-day-view__timeline {
 	display: flex;

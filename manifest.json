@@ -1,10 +1,10 @@
 {
-	"id": "gantt-calendar",
-	"name": "Gantt Calendar",
-	"version": "1.6.2",
+	"id": "gantt-calendar-pro",
+	"name": "Gantt Calendar Pro",
+	"version": "2.0.0",
 	"minAppVersion": "1.13.0",
-	"description": "A powerful visual task management plugin. Visualize and manage tasks created by the Tasks plugin, supporting both emoji and Dataview task formats. Support Feishu Task syncing. Support Gantt chart and calendar views.",
-	"author": "Sugar",
+	"description": "Profesjonalne zarządzanie zadaniami i wykres Gantta dla Obsidian z polskim kalendarzem świąt, 3-poziomową osią czasu i grupowaniem zadań wg folderów i priorytetów.",
+	"author": "Sugar & Antigravity",
 	"authorUrl": "https://github.com/sustcsugar",
 	"isDesktopOnly": false
 }

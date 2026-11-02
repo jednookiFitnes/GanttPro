@@ -1,7 +1,7 @@
 import { useState, type JSX } from 'react';
 import type { App } from 'obsidian';
 import type { SyncResult } from '../../data-layer/feishu-sync/FeishuTaskSync';
-import { i18n } from '../../i18n/i18n';
+import { i18n, isChineseLanguage } from '../../i18n/i18n';
 import { SyncResultModalClasses as C } from '../../utils/bem';
 import { Modal } from '../components/Modal';
 import { openReactModal } from './modalHost';
@@ -42,7 +42,7 @@ export function SyncResultDialog({ title, result, onClose }: SyncResultDialogPro
 					? i18n.t('modals.syncResult.noChange')
 					: activeStats.map(stat => (
 							<span key={stat.label} className={C.elements.summaryItem}>
-								{`${stat.label} ${stat.count} 个`}
+								{isChineseLanguage() ? `${stat.label} ${stat.count} 个` : `${stat.label}: ${stat.count}`}
 							</span>
 					  ))}
 			</div>

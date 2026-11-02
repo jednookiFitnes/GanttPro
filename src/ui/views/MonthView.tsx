@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useCallback, useEffect, useRef, type JSX } from 'react';
 import { AnimatePresence, motion, type Variants } from 'motion/react';
 import { taskKey } from '../utils/taskKey';
+import { resolveTaskFromDrop } from '../utils/taskDropResolver';
 import type { DragEvent as ReactDragEvent } from 'react';
 import { Notice } from 'obsidian';
 import { generateMonthCalendar } from '../../calendar/calendarGenerator';
@@ -18,6 +19,7 @@ import { MOTION, easeOutTransition } from '../motion';
 import { generateVirtualInstances } from '../../tasks/virtualTaskGenerator';
 import { buildMonthTimelineModel, getTaskInterval, clampSingleFieldWrite } from './week/timelineModel';
 import { sortTasks } from '../../tasks/taskSorter';
+import { getPriorityBarColor } from '../../tasks/taskGrouper';
 import { i18n } from '../../i18n/i18n';
 import { Logger } from '../../utils/logger';
 import type { DateFieldType } from '../../settings/types';
@@ -61,7 +63,7 @@ export function MonthView(): JSX.Element {
 	// 原生监听（passive: false）而非 React onWheel：后者在根容器注册为 passive，
 	// preventDefault 可能失效；月视图内容不溢出，滚轮原本无滚动目标，无冲突。
 	const viewRef = useRef<HTMLDivElement>(null);
-	const stepWheelRef = useRef(createMonthWheelStep());
+	const stepWheelRef = useRef(createMonthWheelStep({ stepPx: 240, cooldownMs: 450 }));
 
 	useEffect(() => {
 		const el = viewRef.current;
@@ -144,11 +146,9 @@ export function MonthView(): JSX.Element {
 		const dayCell = e.currentTarget as HTMLElement;
 		setCssProps(dayCell, { backgroundColor: '' });
 
-		const taskId = e.dataTransfer?.getData('taskId');
-		if (!taskId) return;
-		const sourceTask = findTaskById(dragLookupTasks, taskId);
+		const sourceTask = resolveTaskFromDrop(e.dataTransfer, dragLookupTasks, app);
 		if (!sourceTask) {
-			Logger.error('MonthView', 'Source task not found:', taskId);
+			Logger.error('MonthView', 'Source task not found:', e.dataTransfer?.getData('taskId') || e.dataTransfer?.getData('text/plain'));
 			return;
 		}
 
@@ -217,7 +217,7 @@ export function MonthView(): JSX.Element {
 					initial="enter"
 					animate="center"
 					exit="exit"
-					transition={easeOutTransition(MOTION.dur.normal)}
+					transition={easeOutTransition(0.28)}
 				>
 				<div className={`${MonthViewClasses.elements.weekday} gc-month-view__weekday--empty`} />
 			{weekdayLabels.map((label, i) => (
@@ -245,35 +245,44 @@ export function MonthView(): JSX.Element {
 							className={MonthViewClasses.elements.spanStrip}
 							style={{ gridRow: `${weekRow}`, gridColumn: '2 / -1', marginTop: `${SPAN_HEADER_OFFSET_PX}px`, height: `${stripH}px`, maxHeight: `calc(100% - ${SPAN_HEADER_OFFSET_PX}px)` }}
 						>
-							{(weekModel?.spanBars ?? []).map((bar) => (
-								<div
-									key={`span-${taskKey(bar.task)}`}
-									className={`${MonthViewClasses.elements.spanBar}${bar.continuesBefore ? ` ${MonthViewClasses.modifiers.spanBarContinuesBefore}` : ''}${bar.continuesAfter ? ` ${MonthViewClasses.modifiers.spanBarContinuesAfter}` : ''}${bar.stackedIndex > 0 ? ` ${MonthViewClasses.modifiers.spanBarStacked}` : ''}`}
+							{(weekModel?.spanBars ?? []).map((bar) => {
+								const priorityColor = bar.task.completed
+									? 'var(--gc-task-completed, #52c41a)'
+									: getPriorityBarColor(bar.task.priority);
+								const priorityCls = `priority-${(bar.task.priority || 'normal').toLowerCase()}`;
+								const completedCls = bar.task.completed ? 'is-completed' : '';
+								return (
+									<div
+										key={`span-${taskKey(bar.task)}`}
+										className={`${MonthViewClasses.elements.spanBar} ${priorityCls} ${completedCls}${bar.continuesBefore ? ` ${MonthViewClasses.modifiers.spanBarContinuesBefore}` : ''}${bar.continuesAfter ? ` ${MonthViewClasses.modifiers.spanBarContinuesAfter}` : ''}${bar.stackedIndex > 0 ? ` ${MonthViewClasses.modifiers.spanBarStacked}` : ''}`}
 										style={{
 											left: `calc(${(bar.startCol / 7) * 100}% + 1px)`,
 											width: `calc(${((bar.endCol - bar.startCol + 1) / 7) * 100}% - 2px)`,
-											// 超出行数上限叠加到最后一行：+3px 下沉偏移 + 阴影提示（与周视图全天条同视觉）
 											top: `${bar.lane * SPAN_ROW_PX + (bar.stackedIndex > 0 ? 3 : 0)}px`,
 											zIndex: bar.stackedIndex > 0 ? 3 : 1,
-										}}
-								>
-									<TaskCard
-										task={bar.task}
-										config={config}
-										targetDate={week.days[bar.startCol]?.date}
-										onRefresh={handleCardRefresh}
-									/>
-									{bar.timeLabel ? (
-										<span className={MonthViewClasses.elements.spanBarTime}>{bar.timeLabel}</span>
-									) : null}
-								</div>
-							))}
+											'--priority-bar-color': priorityColor,
+										} as any}
+									>
+										<TaskCard
+											task={bar.task}
+											config={config}
+											targetDate={week.days[bar.startCol]?.date}
+											onRefresh={handleCardRefresh}
+										/>
+										{bar.timeLabel ? (
+											<span className={MonthViewClasses.elements.spanBarTime}>{bar.timeLabel}</span>
+										) : null}
+									</div>
+								);
+							})}
 						</div>
 						{week.days.map((day, dayIndex) => {
+							const vacation = plugin.vacationService?.getVacation(day.date);
 							const cellClasses = [
 								MonthViewClasses.elements.dayCell,
 								!day.isCurrentMonth ? MonthViewClasses.modifiers.outsideMonth : '',
 								day.isToday ? MonthViewClasses.modifiers.today : '',
+								vacation ? MonthViewClasses.modifiers.vacation : '',
 							].filter(Boolean).join(' ');
 							const key = toISOStringLocal(day.date);
 							const dayTasks = weekModel?.cells.get(key) || [];
@@ -295,6 +304,7 @@ export function MonthView(): JSX.Element {
 									key={`${week.weekNumber}-${dayIndex}`}
 									className={cellClasses}
 									data-date={key}
+									title={vacation ? `🏖️ URLOP: ${vacation.type}${vacation.project ? ` (${vacation.project})` : ''}${vacation.remarks ? ` — ${vacation.remarks}` : ''}` : undefined}
 									style={{ gridRow: `${weekRow}`, gridColumn: `${dayIndex + 2}` }}
 									role="button"
 									tabIndex={0}
@@ -321,7 +331,15 @@ export function MonthView(): JSX.Element {
 									onDrop={(e) => void handleDayDrop(e, day.date)}
 								>
 									<div className={MonthViewClasses.elements.dayHeader}>
-										<div className={MonthViewClasses.elements.dayNumber}>{day.day.toString()}</div>
+										<div className={`${MonthViewClasses.elements.dayNumber}${vacation ? ` ${MonthViewClasses.modifiers.dayNumberVacation}` : ''}`}>
+											{day.day.toString()}
+										</div>
+										{vacation ? (
+											<span
+												className={MonthViewClasses.elements.vacationDot}
+												title={`🏖️ URLOP: ${vacation.type}${vacation.project ? ` (${vacation.project})` : ''}`}
+											/>
+										) : null}
 										{lunarEl}
 									</div>
 									<div className={MonthViewClasses.elements.tasks} style={{ paddingTop: `${stripH}px` }}>
@@ -369,11 +387,13 @@ function festivalClass(type: 'solar' | 'lunar' | 'solarTerm'): string {
 }
 
 /**
- * 相邻月切换滑入/滑出变体：dir=±1 时整宽双向平移（新板边贴边同速推进），
- * dir=0（同月/跨多月）仅淡入淡出，不做长距离滑屏。
+ * Płynne przejście pionowe (góra/dół) między sąsiednimi miesiącami:
+ * dir=1 (scroll w dół → kolejny miesiąc): nowy wchodzi od dołu (y: 35% -> 0), stary uchodzi w górę (y: -35%)
+ * dir=-1 (scroll w górę → poprzedni miesiąc): nowy wchodzi od góry (y: -35% -> 0), stary uchodzi w dół (y: 35%)
+ * dir=0 (ten sam miesiąc / przeskok wielomiesięczny): delikatne przenikanie (fade) bez przesunięcia
  */
 const monthSlideVariants: Variants = {
-	enter: (dir: number) => ({ x: dir === 0 ? 0 : `${dir * 100}%`, opacity: 0 }),
-	center: { x: 0, opacity: 1 },
-	exit: (dir: number) => ({ x: dir === 0 ? 0 : `${-dir * 100}%`, opacity: 0 }),
+	enter: (dir: number) => ({ y: dir === 0 ? 0 : `${dir * 35}%`, opacity: 0 }),
+	center: { y: 0, opacity: 1 },
+	exit: (dir: number) => ({ y: dir === 0 ? 0 : `${-dir * 35}%`, opacity: 0 }),
 };

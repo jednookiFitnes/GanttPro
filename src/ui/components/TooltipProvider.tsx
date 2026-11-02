@@ -43,7 +43,7 @@ const TooltipContext = createContext<TooltipContextValue | null>(null);
 
 export function useTaskTooltip(): TooltipContextValue {
 	const ctx = useContext(TooltipContext);
-	if (!ctx) throw new Error('useTaskTooltip 必须在 TooltipProvider 内使用');
+	if (!ctx) throw new Error('useTaskTooltip must be used within TooltipProvider');
 	return ctx;
 }
 

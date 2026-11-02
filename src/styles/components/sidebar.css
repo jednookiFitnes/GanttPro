@@ -85,6 +85,8 @@
 /* 筛选栏 */
 .gc-sidebar__filter-bar {
 	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
 	gap: 4px;
 	margin-bottom: 8px;
 	position: relative;
@@ -326,4 +328,286 @@
 	white-space: nowrap;
 }
 
+.gc-sidebar__timeline-allday-item .gc-task-card--timeline {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
 
+.gc-sidebar__timeline-allday-item .gc-task-card--timeline .gc-task-card__checkbox {
+	order: 1;
+	flex-shrink: 0;
+}
+
+.gc-sidebar__timeline-allday-item .gc-task-card--timeline .gc-task-card__folder {
+	order: 2;
+	flex-shrink: 0;
+	max-width: 140px;
+	font-size: 10px;
+	color: rgba(255, 255, 255, 0.95);
+	padding: 1px 5px;
+	background: rgba(0, 0, 0, 0.2);
+	border-radius: 4px;
+}
+
+.gc-sidebar__timeline-allday-item .gc-task-card--timeline .gc-task-card__text {
+	order: 3;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+/* ==================== Sidebar Task Groups ==================== */
+.gc-sidebar-task-group {
+	margin-bottom: 8px;
+}
+
+.gc-sidebar-group-header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 5px 8px;
+	background: var(--background-secondary);
+	border: 1px solid var(--gc-border-hairline);
+	border-radius: var(--gc-radius-xs);
+	font-weight: 600;
+	font-size: 12px;
+	cursor: pointer;
+	user-select: none;
+	margin-bottom: 6px;
+	transition: background-color var(--gc-dur-fast) var(--gc-ease-out), border-color var(--gc-dur-fast) var(--gc-ease-out);
+}
+
+.gc-sidebar-group-header:hover {
+	background: var(--gc-hover-wash);
+	border-color: var(--gc-border-strong);
+}
+
+.gc-sidebar-group-toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 12px;
+	font-size: 11px;
+	color: var(--text-muted);
+}
+
+.gc-sidebar-group-icon {
+	font-size: 13px;
+	display: inline-flex;
+	align-items: center;
+}
+
+.gc-sidebar-group-title {
+	flex: 1;
+	color: var(--text-normal);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.gc-sidebar-group-count {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 1px 6px;
+	border-radius: 10px;
+	font-size: 10px;
+	font-weight: 600;
+	background: var(--background-modifier-border);
+	color: var(--text-muted);
+}
+
+.gc-sidebar-group-tasks {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	padding-left: 6px;
+	border-left: 2px solid var(--background-modifier-border);
+	margin-left: 6px;
+}
+
+
+
+
+/* ==========================================================================
+   Widok Agendy / Harmonogramu dla paska bocznego (Problem 1: Opcja C)
+   ========================================================================== */
+.gc-timeline-agenda {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 8px 6px;
+	overflow-y: auto;
+	flex: 1 1 auto;
+}
+
+.gc-timeline-agenda__section {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.gc-timeline-agenda__section-title {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	padding: 2px 4px;
+	border-bottom: 1px solid var(--gc-border-hairline);
+	margin-bottom: 2px;
+}
+
+.gc-timeline-agenda__icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.gc-timeline-agenda__icon svg {
+	width: 13px;
+	height: 13px;
+}
+
+.gc-timeline-agenda__count {
+	font-size: 10px;
+	font-weight: 500;
+	padding: 0 5px;
+	border-radius: 9999px;
+	background: var(--background-modifier-border);
+	color: var(--text-muted);
+	margin-left: auto;
+}
+
+.gc-timeline-agenda__items {
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+}
+
+.gc-timeline-agenda__item {
+	border-radius: var(--gc-radius-xs);
+	overflow: hidden;
+}
+
+.gc-timeline-agenda__timeline-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.gc-timeline-agenda__row {
+	display: flex;
+	align-items: stretch;
+	gap: 8px;
+	position: relative;
+}
+
+.gc-timeline-agenda__time-col {
+	width: 76px;
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	padding-top: 5px;
+}
+
+.gc-timeline-agenda__time-badge {
+	font-size: 10.5px;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	color: var(--text-muted);
+	white-space: nowrap;
+	line-height: 1.2;
+}
+
+.gc-timeline-agenda__card-col {
+	flex: 1 1 auto;
+	min-width: 0;
+	border-radius: var(--gc-radius-xs);
+	overflow: hidden;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.gc-timeline-agenda .gc-task-card--timeline {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 5px 8px;
+}
+
+.gc-timeline-agenda .gc-task-card--timeline .gc-task-card__checkbox {
+	order: 1;
+	flex-shrink: 0;
+	margin: 0;
+}
+
+.gc-timeline-agenda .gc-task-card--timeline .gc-task-card__folder {
+	order: 2;
+	flex-shrink: 0;
+	max-width: 140px;
+	font-size: 10px;
+	line-height: 1.2;
+	color: rgba(255, 255, 255, 0.95);
+	padding: 1px 5px;
+	background: rgba(0, 0, 0, 0.2);
+	border-radius: 4px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.gc-timeline-agenda .gc-task-card--timeline .gc-task-card__text {
+	order: 3;
+	flex: 1 1 auto;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.gc-timeline-agenda .gc-task-card--timeline .gc-task-card__tags {
+	order: 4;
+	flex-shrink: 0;
+}
+
+.gc-timeline-agenda__card-col .gc-task-card--timeline {
+	padding: 5px 8px;
+}
+
+.gc-timeline-agenda__empty {
+	padding: 12px 8px;
+	font-size: 11px;
+	color: var(--text-muted);
+	text-align: center;
+	font-style: italic;
+}
+
+.gc-sidebar__timeline-allday-item.priority-medium .gc-task-card--timeline .gc-task-card__text {
+	color: #18181b !important;
+	font-weight: 600;
+}
+
+.gc-sidebar__timeline-allday-item.priority-medium .gc-task-card--timeline .gc-task-card__folder {
+	color: #18181b !important;
+	background: rgba(0, 0, 0, 0.12) !important;
+	font-weight: 600;
+}
+
+.gc-timeline-agenda__item.priority-medium .gc-task-card--timeline .gc-task-card__text,
+.gc-timeline-agenda__row.priority-medium .gc-task-card--timeline .gc-task-card__text,
+.gc-timeline-agenda .gc-task-card--timeline.priority-medium .gc-task-card__text {
+	color: #18181b !important;
+	font-weight: 600;
+}
+
+.gc-timeline-agenda__item.priority-medium .gc-task-card--timeline .gc-task-card__folder,
+.gc-timeline-agenda__row.priority-medium .gc-task-card--timeline .gc-task-card__folder,
+.gc-timeline-agenda .gc-task-card--timeline.priority-medium .gc-task-card__folder {
+	color: #18181b !important;
+	background: rgba(0, 0, 0, 0.12) !important;
+	font-weight: 600;
+}

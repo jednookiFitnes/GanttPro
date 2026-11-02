@@ -85,6 +85,8 @@ export const BLOCKS = {
 	TAG_SELECTOR: 'tag-selector',
 	/** 设置页 */
 	SETTINGS: 'settings',
+	/** 设置页文件夹筛选列表 */
+	SETTINGS_FOLDER_LIST: 'settings-folder-list',
 	/** 同步设置 */
 	SYNC_HINT: 'sync-hint',
 	SYNC_TASKLIST: 'sync-tasklist',
@@ -132,6 +134,9 @@ export const TaskCardClasses = {
 		priorityBadge: bem(BLOCKS.TASK_CARD, 'priority-badge'),
 		times: bem(BLOCKS.TASK_CARD, 'times'),
 		timeBadge: bem(BLOCKS.TASK_CARD, 'time-badge'),
+		folder: bem(BLOCKS.TASK_CARD, 'folder'),
+		folderIcon: bem(BLOCKS.TASK_CARD, 'folder-icon'),
+		folderName: bem(BLOCKS.TASK_CARD, 'folder-name'),
 		file: bem(BLOCKS.TASK_CARD, 'file'),
 		warning: bem(BLOCKS.TASK_CARD, 'warning'),
 		ticktick: bem(BLOCKS.TASK_CARD, 'ticktick'),
@@ -338,6 +343,12 @@ export const DayViewClasses = {
 			alldayTasks: bem(BLOCKS.DAY_VIEW, 'allday-tasks'),
 			alldayItem: bem(BLOCKS.DAY_VIEW, 'allday-item'),
 			alldayTime: bem(BLOCKS.DAY_VIEW, 'allday-time'),
+			// 假期横幅
+			vacationBanner: bem(BLOCKS.DAY_VIEW, 'vacation-banner'),
+			vacationIcon: bem(BLOCKS.DAY_VIEW, 'vacation-icon'),
+			vacationTitle: bem(BLOCKS.DAY_VIEW, 'vacation-title'),
+			vacationProject: bem(BLOCKS.DAY_VIEW, 'vacation-project'),
+			vacationRemarks: bem(BLOCKS.DAY_VIEW, 'vacation-remarks'),
 	},
 };
 
@@ -736,12 +747,15 @@ export const YearViewClasses = {
 		dayNumber: bem(BLOCKS.YEAR_VIEW, 'day-number'),
 		lunarText: bem(BLOCKS.YEAR_VIEW, 'lunar-text'),
 		taskCount: bem(BLOCKS.YEAR_VIEW, 'task-count'),
+		vacationDot: bem(BLOCKS.YEAR_VIEW, 'vacation-dot'),
 	},
 
 	/** Modifiers */
 	modifiers: {
 		showLunar: bem(BLOCKS.YEAR_VIEW, undefined, 'show-lunar'),
 		monthCardShowLunar: bem(BLOCKS.YEAR_VIEW, 'month-card', 'show-lunar'),
+		vacation: bem(BLOCKS.YEAR_VIEW, 'day', 'vacation'),
+		dayNumberVacation: bem(BLOCKS.YEAR_VIEW, 'day-number', 'vacation'),
 	},
 };
 
@@ -767,6 +781,7 @@ export const MonthViewClasses = {
 		tasks: bem(BLOCKS.MONTH_VIEW, 'tasks'),
 		taskItem: bem(BLOCKS.MONTH_VIEW, 'task-item'),
 		taskMore: bem(BLOCKS.MONTH_VIEW, 'task-more'),
+		vacationDot: bem(BLOCKS.MONTH_VIEW, 'vacation-dot'),
 		// 跨日横跨条带
 		spanStrip: bem(BLOCKS.MONTH_VIEW, 'span-strip'),
 		spanBar: bem(BLOCKS.MONTH_VIEW, 'span-bar'),
@@ -777,6 +792,8 @@ export const MonthViewClasses = {
 	modifiers: {
 		outsideMonth: bem(BLOCKS.MONTH_VIEW, 'day-cell', 'outside-month'),
 		today: bem(BLOCKS.MONTH_VIEW, 'day-cell', 'today'),
+		vacation: bem(BLOCKS.MONTH_VIEW, 'day-cell', 'vacation'),
+		dayNumberVacation: bem(BLOCKS.MONTH_VIEW, 'day-number', 'vacation'),
 		festival: bem(BLOCKS.MONTH_VIEW, 'lunar-text', 'festival'),
 		festivalSolar: bem(BLOCKS.MONTH_VIEW, 'lunar-text', 'festival-solar'),
 		festivalLunar: bem(BLOCKS.MONTH_VIEW, 'lunar-text', 'festival-lunar'),
@@ -802,6 +819,7 @@ export const WeekViewClasses = {
 		dayName: bem(BLOCKS.WEEK_VIEW, 'day-name'),
 		dayNumber: bem(BLOCKS.WEEK_VIEW, 'day-number'),
 		lunarText: bem(BLOCKS.WEEK_VIEW, 'lunar-text'),
+		vacationDot: bem(BLOCKS.WEEK_VIEW, 'vacation-dot'),
 		tasksGrid: bem(BLOCKS.WEEK_VIEW, 'tasks-grid'),
 		// 时间画布
 		timeGutterSlot: bem(BLOCKS.WEEK_VIEW, 'time-gutter-slot'),
@@ -833,8 +851,11 @@ export const WeekViewClasses = {
 	/** Modifiers */
 	modifiers: {
 		today: bem(BLOCKS.WEEK_VIEW, 'header-cell', 'today'),
+		headerCellVacation: bem(BLOCKS.WEEK_VIEW, 'header-cell', 'vacation'),
+		dayNumberVacation: bem(BLOCKS.WEEK_VIEW, 'day-number', 'vacation'),
 		dayColToday: bem(BLOCKS.WEEK_VIEW, 'day-col', 'today'),
 		dayColDragOver: bem(BLOCKS.WEEK_VIEW, 'day-col', 'drag-over'),
+		dayColVacation: bem(BLOCKS.WEEK_VIEW, 'day-col', 'vacation'),
 		timeBlockContinuesBefore: bem(BLOCKS.WEEK_VIEW, 'time-block', 'continues-before'),
 		timeBlockContinuesAfter: bem(BLOCKS.WEEK_VIEW, 'time-block', 'continues-after'),
 		timeBlockStacked: bem(BLOCKS.WEEK_VIEW, 'time-block', 'stacked'),
@@ -843,6 +864,7 @@ export const WeekViewClasses = {
 		ghostDragging: bem(BLOCKS.WEEK_VIEW, 'ghost', 'dragging'),
 		alldayCellToday: bem(BLOCKS.WEEK_VIEW, 'allday-cell', 'today'),
 		alldayCellDragOver: bem(BLOCKS.WEEK_VIEW, 'allday-cell', 'drag-over'),
+		alldayCellVacation: bem(BLOCKS.WEEK_VIEW, 'allday-cell', 'vacation'),
 		alldayBarContinuesBefore: bem(BLOCKS.WEEK_VIEW, 'allday-bar', 'continues-before'),
 		alldayBarContinuesAfter: bem(BLOCKS.WEEK_VIEW, 'allday-bar', 'continues-after'),
 		alldayBarStacked: bem(BLOCKS.WEEK_VIEW, 'allday-bar', 'stacked'),
@@ -878,12 +900,16 @@ export const DayCanvasClasses = {
 	/** Modifiers */
 	modifiers: {
 		canvasDragOver: bem(BLOCKS.DAY_CANVAS, 'canvas', 'drag-over'),
+		canvasVacation: bem(BLOCKS.DAY_CANVAS, 'canvas', 'vacation'),
 		blockContinuesBefore: bem(BLOCKS.DAY_CANVAS, 'block', 'continues-before'),
 		blockContinuesAfter: bem(BLOCKS.DAY_CANVAS, 'block', 'continues-after'),
 		blockStacked: bem(BLOCKS.DAY_CANVAS, 'block', 'stacked'),
 		handleTop: bem(BLOCKS.DAY_CANVAS, 'handle', 'top'),
 		handleBottom: bem(BLOCKS.DAY_CANVAS, 'handle', 'bottom'),
 		ghostDragging: bem(BLOCKS.DAY_CANVAS, 'ghost', 'dragging'),
+		blockShort: bem(BLOCKS.DAY_CANVAS, 'block', 'short'),
+		blockSingleLine: bem(BLOCKS.DAY_CANVAS, 'block', 'single-line'),
+		blockTiny: bem(BLOCKS.DAY_CANVAS, 'block', 'tiny'),
 	},
 };
 
@@ -1153,6 +1179,24 @@ export const SettingsClasses = {
 		tabContent: bem(BLOCKS.SETTINGS, 'tab-content'),
 		sectionHidden: bem(BLOCKS.SETTINGS, 'section-hidden'),
 		syncTargetInput: bem(BLOCKS.SETTINGS, 'sync-target-input'),
+	},
+};
+
+/**
+ * 设置页文件夹筛选列表类名常量
+ */
+export const SettingsFolderListClasses = {
+	block: bem(BLOCKS.SETTINGS_FOLDER_LIST),
+
+	elements: {
+		container: bem(BLOCKS.SETTINGS_FOLDER_LIST, 'container'),
+		inputRow: bem(BLOCKS.SETTINGS_FOLDER_LIST, 'input-row'),
+		tagList: bem(BLOCKS.SETTINGS_FOLDER_LIST, 'tags'),
+		tag: bem(BLOCKS.SETTINGS_FOLDER_LIST, 'tag'),
+		tagIcon: bem(BLOCKS.SETTINGS_FOLDER_LIST, 'tag-icon'),
+		tagName: bem(BLOCKS.SETTINGS_FOLDER_LIST, 'tag-name'),
+		tagRemove: bem(BLOCKS.SETTINGS_FOLDER_LIST, 'tag-remove'),
+		emptyHint: bem(BLOCKS.SETTINGS_FOLDER_LIST, 'empty-hint'),
 	},
 };
 

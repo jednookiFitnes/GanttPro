@@ -18,6 +18,164 @@ export interface ContextMenuSection {
 	items: ContextMenuItemDef[];
 }
 
+export interface ContextMenuProps {
+	/** 触发位置（null 表示关闭） */
+	state: { x: number; y: number } | null;
+	/** 菜单内容 sections */
+	sections: ContextMenuSection[];
+	/** 关闭回调 */
+	onClose: () => void;
+}
+
+/**
+ * 独立的右键菜单浮层组件，可在任何地方（包括纯 SVG/Canvas 画布）调用
+ */
+export function ContextMenu({ state, sections, onClose }: ContextMenuProps): JSX.Element | null {
+	const menuRef = useRef<HTMLDivElement | null>(null);
+	const openAsSheet = isPhoneNow();
+
+	useEffect(() => {
+		if (!state) return;
+		const handleClickOutside = (e: MouseEvent) => {
+			if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
+		};
+		const handleKeydown = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') onClose();
+		};
+		const handleResize = () => {
+			onClose();
+		};
+		document.addEventListener('mousedown', handleClickOutside);
+		document.addEventListener('keydown', handleKeydown);
+		window.addEventListener('resize', handleResize);
+		return () => {
+			document.removeEventListener('mousedown', handleClickOutside);
+			document.removeEventListener('keydown', handleKeydown);
+			window.removeEventListener('resize', handleResize);
+		};
+	}, [state, onClose]);
+
+	// Keep the menu inside the viewport: flip above / left of the cursor when
+	// opening near the bottom / right edge would push the panel off-screen.
+	useLayoutEffect(() => {
+		if (openAsSheet) return;
+		const el = menuRef.current;
+		if (!state || !el) return;
+
+		const rect = el.getBoundingClientRect();
+		const margin = 8;
+		const viewportW = window.innerWidth;
+		const viewportH = window.innerHeight;
+
+		let x = state.x;
+		let y = state.y;
+
+		// 1. Oś pionowa (Y): jeśli menu nie mieści się poniżej pozycji kliknięcia
+		if (y + rect.height > viewportH - margin) {
+			// Odwróć do góry nad kursor
+			y = state.y - rect.height;
+		}
+
+		// Jeśli po odwróceniu (lub z powodu dużej wysokości) wychodzi poza górną krawędź
+		if (y < margin) {
+			y = margin;
+		} else if (y + rect.height > viewportH - margin) {
+			// Jeśli nadal wychodzi poza dolną krawędź, dosuń do dolnej krawędzi
+			y = Math.max(margin, viewportH - rect.height - margin);
+		}
+
+		// 2. Oś pozioma (X): jeśli menu nie mieści się po prawej stronie kursora
+		if (x + rect.width > viewportW - margin) {
+			// Odwróć na lewo od kursora
+			x = state.x - rect.width;
+		}
+
+		// Jeśli po odwróceniu wychodzi poza lewą krawędź
+		if (x < margin) {
+			x = margin;
+		} else if (x + rect.width > viewportW - margin) {
+			// Jeśli nadal wychodzi poza prawą krawędź, dosuń do prawej krawędzi
+			x = Math.max(margin, viewportW - rect.width - margin);
+		}
+
+		el.style.left = `${Math.round(x)}px`;
+		el.style.top = `${Math.round(y)}px`;
+	});
+
+	const renderSections = () => sections.map((section, si) => (
+		<div key={si} className={ContextMenuClasses.section}>
+			{section.items.map((item) => (
+				<button
+					key={item.key}
+					className={`${ContextMenuClasses.item}${item.disabled ? ` ${ContextMenuClasses.itemDisabled}` : ''}`}
+					disabled={item.disabled}
+					onClick={() => {
+						if (item.disabled) return;
+						onClose();
+						item.onClick?.();
+					}}
+				>
+					{item.icon ? <Icon icon={item.icon} className={ContextMenuClasses.itemIcon} /> : null}
+					<span className={ContextMenuClasses.itemLabel}>{item.title}</span>
+				</button>
+			))}
+		</div>
+	));
+
+	return createPortal(
+		<AnimatePresence>
+			{state && (
+				openAsSheet ? (
+					// 手机端：底部操作面板（拇指可达，符合移动习惯）
+					<Fragment key="context-sheet">
+						<motion.div
+							className={ContextMenuClasses.sheetOverlay}
+							initial={{ opacity: 0 }}
+							animate={{ opacity: 1 }}
+							exit={{ opacity: 0 }}
+							transition={easeOutTransition(MOTION.dur.fast)}
+							onClick={onClose}
+						/>
+						<motion.div
+							key="context-sheet"
+							ref={menuRef}
+							className={`${ContextMenuClasses.container} ${ContextMenuClasses.sheet}`}
+							initial={{ y: '100%' }}
+							animate={{ y: 0 }}
+							exit={{ y: '100%' }}
+							transition={easeOutTransition(MOTION.dur.normal)}
+						>
+							<div className={ContextMenuClasses.sheetGrabber} />
+							{renderSections()}
+						</motion.div>
+					</Fragment>
+				) : (
+					<motion.div
+						key="context-menu"
+						ref={menuRef}
+						className={ContextMenuClasses.container}
+						style={{
+							position: 'fixed',
+							left: state.x,
+							top: state.y,
+							maxHeight: 'calc(100vh - 16px)',
+							overflowY: 'auto',
+						}}
+						variants={panelVariants}
+						initial="initial"
+						animate="animate"
+						exit="exit"
+						transition={easeOutTransition(MOTION.dur.fast)}
+					>
+						{renderSections()}
+					</motion.div>
+				)
+			)}
+		</AnimatePresence>,
+		document.body
+	);
+}
+
 export interface ContextMenuTriggerProps {
 	/** 触发右键菜单的目标内容 */
 	children: ReactNode;
@@ -48,7 +206,6 @@ export function ContextMenuTrigger({
 	longPressDisabled,
 }: ContextMenuTriggerProps): JSX.Element {
 	const [state, setState] = useState<MenuState | null>(null);
-	const menuRef = useRef<HTMLDivElement | null>(null);
 
 	const handleContextMenu = useCallback((e: ReactMouseEvent) => {
 		e.preventDefault();
@@ -83,7 +240,7 @@ export function ContextMenuTrigger({
 			setState({ x, y });
 		}, 500);
 		longPressRef.current = { timer, x, y };
-	}, [onOpen]);
+	}, [onOpen, longPressDisabled]);
 
 	const handlePointerMove = useCallback((e: ReactPointerEvent) => {
 		const lp = longPressRef.current;
@@ -99,68 +256,6 @@ export function ContextMenuTrigger({
 		}
 	}, []);
 
-	const close = useCallback(() => setState(null), []);
-
-	useEffect(() => {
-		if (!state) return;
-		const handleClickOutside = (e: MouseEvent) => {
-			if (menuRef.current && !menuRef.current.contains(e.target as Node)) close();
-		};
-		const handleKeydown = (e: KeyboardEvent) => {
-			if (e.key === 'Escape') close();
-		};
-		document.addEventListener('mousedown', handleClickOutside);
-		document.addEventListener('keydown', handleKeydown);
-		return () => {
-			document.removeEventListener('mousedown', handleClickOutside);
-			document.removeEventListener('keydown', handleKeydown);
-		};
-	}, [state, close]);
-
-	// Keep the menu inside the viewport: flip above / left of the cursor when
-	// opening near the bottom / right edge would push the panel off-screen.
-	useLayoutEffect(() => {
-		if (!state || !menuRef.current) return;
-		const rect = menuRef.current.getBoundingClientRect();
-		const margin = 8;
-		let x = state.x;
-		let y = state.y;
-
-		if (y + rect.height > window.innerHeight - margin) {
-			y = Math.max(margin, state.y - rect.height);
-		}
-		if (x + rect.width > window.innerWidth - margin) {
-			x = Math.max(margin, state.x - rect.width);
-		}
-
-		if (x !== state.x || y !== state.y) {
-			setState({ x, y });
-		}
-	}, [state]);
-
-	// 菜单项渲染（浮动菜单与手机底部面板共用）
-	const renderSections = () => sections.map((section, si) => (
-		<div key={si} className={ContextMenuClasses.section}>
-			{section.items.map((item) => (
-				<button
-					key={item.key}
-					className={`${ContextMenuClasses.item}${item.disabled ? ` ${ContextMenuClasses.itemDisabled}` : ''}`}
-					disabled={item.disabled}
-					onClick={() => {
-						if (item.disabled) return;
-						close();
-						item.onClick?.();
-					}}
-				>
-					{item.icon ? <Icon icon={item.icon} className={ContextMenuClasses.itemIcon} /> : null}
-					<span className={ContextMenuClasses.itemLabel}>{item.title}</span>
-				</button>
-			))}
-		</div>
-	));
-
-	const openAsSheet = state !== null && isPhoneNow();
-
 	return (
 		<div
 			className={className}
@@ -173,52 +268,11 @@ export function ContextMenuTrigger({
 			onClickCapture={handleClickCapture}
 		>
 			{children}
-			{createPortal(
-				<AnimatePresence>
-					{state ? (
-						openAsSheet ? (
-							// 手机端：底部操作面板（拇指可达，符合移动习惯）
-							<Fragment key="context-sheet">
-								<motion.div
-									className={ContextMenuClasses.sheetOverlay}
-									initial={{ opacity: 0 }}
-									animate={{ opacity: 1 }}
-									exit={{ opacity: 0 }}
-									transition={easeOutTransition(MOTION.dur.fast)}
-									onClick={close}
-								/>
-								<motion.div
-									key="context-sheet"
-									ref={menuRef}
-									className={`${ContextMenuClasses.container} ${ContextMenuClasses.sheet}`}
-									initial={{ y: '100%' }}
-									animate={{ y: 0 }}
-									exit={{ y: '100%' }}
-									transition={easeOutTransition(MOTION.dur.normal)}
-								>
-									<div className={ContextMenuClasses.sheetGrabber} />
-									{renderSections()}
-								</motion.div>
-							</Fragment>
-						) : (
-							<motion.div
-								key="context-menu"
-								ref={menuRef}
-								className={ContextMenuClasses.container}
-								style={{ position: 'fixed', left: state.x, top: state.y }}
-								variants={panelVariants}
-								initial="initial"
-								animate="animate"
-								exit="exit"
-								transition={easeOutTransition(MOTION.dur.fast)}
-							>
-								{renderSections()}
-							</motion.div>
-						)
-					) : null}
-				</AnimatePresence>,
-				document.body
-			)}
+			<ContextMenu
+				state={state}
+				sections={sections}
+				onClose={() => setState(null)}
+			/>
 		</div>
 	);
 }

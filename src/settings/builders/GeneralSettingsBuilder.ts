@@ -87,9 +87,10 @@ export class GeneralSettingsBuilder extends BaseBuilder {
 						.addOption('system', i18n.t('settings.general.language.options.system'))
 						.addOption('en', i18n.t('settings.general.language.options.en'))
 						.addOption('zh', i18n.t('settings.general.language.options.zh'))
+						.addOption('pl', 'Polski')
 						.setValue(this.plugin.settings.language || 'system')
 						.onChange((value) => {
-							this.plugin.settings.language = value as 'system' | 'en' | 'zh';
+							this.plugin.settings.language = value as 'system' | 'en' | 'zh' | 'pl';
 							setLanguage(value);
 							refreshPresetStatusNames(this.plugin.settings.taskStatuses);
 							this.plugin.settings.showLunar = isChineseLanguage();

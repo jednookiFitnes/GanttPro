@@ -20,7 +20,7 @@ const ModalProviderContext = createContext<ModalProviderContextValue | null>(nul
 
 export function useModal(): ModalProviderContextValue {
 	const ctx = useContext(ModalProviderContext);
-	if (!ctx) throw new Error('useModal 必须在 ModalProvider 内使用');
+	if (!ctx) throw new Error('useModal must be used within ModalProvider');
 	return ctx;
 }
 

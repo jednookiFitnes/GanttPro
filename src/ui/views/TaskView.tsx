@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type JSX } from 'react';
+import { useCallback, useMemo, useState, type JSX } from 'react';
 import { taskKey } from '../utils/taskKey';
 import { getTaskDateField } from '../../types';
 import { TaskViewConfig } from '../../components/TaskCard';
@@ -10,6 +10,7 @@ import { TaskCard } from '../components/TaskCard';
 import { i18n } from '../../i18n/i18n';
 import { generateVirtualInstances } from '../../tasks/virtualTaskGenerator';
 import { Logger } from '../../utils/logger';
+import { groupTasks } from '../../tasks/taskGrouper';
 
 /** 视图容器类名：通用视图块 + 任务视图修饰符 + 任务视图块（序号列元素挂在该块下） */
 const VIEW_CLASS = `${ViewClasses.block} ${ViewClasses.modifiers.task} ${TaskViewClasses.block}`;
@@ -19,6 +20,8 @@ export function TaskView(): JSX.Element {
 	const tasks = useCalendarStore((s) => s.tasks);
 	const filter = useCalendarStore((s) => selectViewFilter(s, 'task'));
 	const refreshTasks = useCalendarStore((s) => s.refreshTasks);
+	const taskViewGroupBy = useCalendarStore((s) => s.taskViewGroupBy);
+	const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 	// 稳定回调：TaskCard 已 memo，内联箭头函数会使 memo 失效
 	const handleCardRefresh = useCallback(() => refreshTasks(), [refreshTasks]);
 
@@ -87,6 +90,23 @@ export function TaskView(): JSX.Element {
 		}
 	}, [tasks, filter, dateRangeMode, timeFieldFilter]);
 
+	const toggleGroup = useCallback((groupId: string) => {
+		setCollapsedGroups((prev) => {
+			const next = new Set(prev);
+			if (next.has(groupId)) {
+				next.delete(groupId);
+			} else {
+				next.add(groupId);
+			}
+			return next;
+		});
+	}, []);
+
+	const groups = useMemo(() => {
+		if (!viewData || taskViewGroupBy === 'none') return [];
+		return groupTasks(viewData, taskViewGroupBy);
+	}, [viewData, taskViewGroupBy]);
+
 	if (viewData === null) {
 		return (
 			<div className={VIEW_CLASS}>
@@ -103,19 +123,59 @@ export function TaskView(): JSX.Element {
 		);
 	}
 
+	if (taskViewGroupBy === 'none') {
+		return (
+			<div className={VIEW_CLASS}>
+				{viewData.map((task, index) => (
+					<div key={taskKey(task)} className={TaskViewClasses.elements.row}>
+						{/* 序号是行装饰，不参与无障碍朗读与文本选择 */}
+						<span className={TaskViewClasses.elements.index} aria-hidden="true">{index + 1}</span>
+						<TaskCard
+							task={task}
+							config={config}
+							onRefresh={handleCardRefresh}
+						/>
+					</div>
+				))}
+			</div>
+		);
+	}
+
 	return (
 		<div className={VIEW_CLASS}>
-			{viewData.map((task, index) => (
-				<div key={taskKey(task)} className={TaskViewClasses.elements.row}>
-					{/* 序号是行装饰，不参与无障碍朗读与文本选择 */}
-					<span className={TaskViewClasses.elements.index} aria-hidden="true">{index + 1}</span>
-					<TaskCard
-						task={task}
-						config={config}
-						onRefresh={handleCardRefresh}
-					/>
-				</div>
-			))}
+			{groups.map((group) => {
+				const isCollapsed = collapsedGroups.has(group.id);
+				return (
+					<div key={group.id} className="gc-task-group-section">
+						<div
+							className="gc-task-group-header"
+							onClick={() => toggleGroup(group.id)}
+							role="button"
+							tabIndex={0}
+							title={group.fullPath ? `Ścieżka: ${group.fullPath}` : undefined}
+						>
+							<span className="gc-task-group-toggle">{isCollapsed ? '▸' : '▾'}</span>
+							<span className="gc-task-group-icon" style={group.badgeColor ? { color: group.badgeColor } : undefined}>{group.icon}</span>
+							<span className="gc-task-group-title">{group.title}</span>
+							<span className="gc-task-group-count">{group.count}</span>
+						</div>
+						{!isCollapsed && (
+							<div className="gc-task-group-tasks">
+								{group.tasks.map((task, index) => (
+									<div key={taskKey(task)} className={TaskViewClasses.elements.row}>
+										<span className={TaskViewClasses.elements.index} aria-hidden="true">{index + 1}</span>
+										<TaskCard
+											task={task}
+											config={config}
+											onRefresh={handleCardRefresh}
+										/>
+									</div>
+								))}
+							</div>
+						)}
+					</div>
+				);
+			})}
 		</div>
 	);
 }

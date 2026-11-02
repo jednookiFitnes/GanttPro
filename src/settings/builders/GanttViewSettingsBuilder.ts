@@ -60,6 +60,69 @@ export class GanttViewSettingsBuilder extends BaseBuilder {
 							})();
 						}));
 			});
+
+			// Wyróżnianie urlopów
+			addSetting(setting => {
+				setting.setName('Wyróżniaj urlopy z Timekeep')
+					.setDesc('Zaznaczaj dni urlopowe na osi czasu wykresu Gantta w dedykowanym kolorze (np. pomarańczowym)')
+					.addToggle(toggle => toggle
+						.setValue(this.plugin.settings.vacationHighlightEnabled)
+						.onChange(async (value) => {
+							this.plugin.settings.vacationHighlightEnabled = value;
+							await this.plugin.saveSettings();
+							if ((this.plugin as any).vacationService) {
+								await (this.plugin as any).vacationService.loadVacations();
+							}
+							this.plugin.refreshCalendarViews();
+						}));
+			});
+
+			// Projekt urlopowy
+			addSetting(setting => {
+				setting.setName('Projekt Timekeep dla urlopów')
+					.setDesc('Nazwa projektu w Timekeep traktowanego jako nieobecność/urlop (np. 99-001 - NIEOBECNOŚCI)')
+					.addText(text => text
+						.setPlaceholder('99-001 - NIEOBECNOŚCI')
+						.setValue(this.plugin.settings.vacationTimekeepProject)
+						.onChange(async (value) => {
+							this.plugin.settings.vacationTimekeepProject = value;
+							await this.plugin.saveSettings();
+							if ((this.plugin as any).vacationService) {
+								await (this.plugin as any).vacationService.loadVacations();
+							}
+							this.plugin.refreshCalendarViews();
+						}));
+			});
+
+			// Typy działań urlopowych
+			addSetting(setting => {
+				setting.setName('Typy działań urlopowych')
+					.setDesc('Typy działań w Timekeep uznawane za urlop/dzień wolny (rozdzielane przecinkami, np. U_W - urlop wypoczynkowy, U_NG - odbiór nadgodzin)')
+					.addText(text => text
+						.setPlaceholder('U_W - urlop wypoczynkowy')
+						.setValue(this.plugin.settings.vacationTimekeepTypes)
+						.onChange(async (value) => {
+							this.plugin.settings.vacationTimekeepTypes = value;
+							await this.plugin.saveSettings();
+							if ((this.plugin as any).vacationService) {
+								await (this.plugin as any).vacationService.loadVacations();
+							}
+							this.plugin.refreshCalendarViews();
+						}));
+			});
+
+			// Kolor wyróżnienia urlopów
+			addSetting(setting => {
+				setting.setName('Kolor wyróżnienia urlopów')
+					.setDesc('Kolor akcentu dla kolumn i nagłówków dni urlopowych na wykresie Gantta')
+					.addColorPicker(cp => cp
+						.setValue(this.plugin.settings.vacationHighlightColor || '#f97316')
+						.onChange(async (value) => {
+							this.plugin.settings.vacationHighlightColor = value;
+							await this.plugin.saveSettings();
+							this.plugin.refreshCalendarViews();
+						}));
+			});
 		});
 	}
 }

@@ -18,7 +18,7 @@
 	min-height: 0;
 	display: flex;
 	flex-direction: column;
-	overflow: visible;  /* 改为 visible 以允许内部 sticky 定位生效 */
+	overflow: hidden;
 	width: 100%;
 	height: 100%;
 }
@@ -27,11 +27,16 @@
 .gc-gantt-view__root {
 	flex: 1 1 auto;
 	min-width: 100%;
+	height: 100%;
+	min-height: 0;
 	position: relative;
-	overflow: visible;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
 	background-color: var(--background-primary);
 	border-radius: 8px;
 	padding: 8px;
+	box-sizing: border-box;
 }
 
 /* ============================================
@@ -48,24 +53,28 @@
 /* 单个 Grid 容器 - 包含所有甘特图元素 */
 .gc-gantt-view__main-grid {
 	--task-column-width: 240px;  /* 默认任务列宽度，可通过 JS 动态修改 */
+	--gantt-header-height: 76px; /* 3-poziomowy nagłówek Gantt Calendar Pro */
 
 	display: grid;
 	grid-template-columns: var(--task-column-width) 4px 1fr;
 	grid-template-areas:
 		"corner resizer header"
 		"tasklist resizer chart";
-	grid-template-rows: 50px auto;
+	grid-template-rows: var(--gantt-header-height, 76px) 1fr;
 
 	width: 100%;
+	height: 100%;
+	min-height: 0;
 	min-width: 0;
 	gap: 0;
 	position: relative;
+	overflow: hidden;
 }
 
 /* 左上角空白区域（sticky） */
 .gc-gantt-view__corner {
 	grid-area: corner;
-	height: 50px;
+	height: var(--gantt-header-height, 76px);
 	overflow: hidden;
 	border-right: 1px solid var(--background-modifier-border);
 	border-bottom: 1px solid var(--background-modifier-border);
@@ -81,7 +90,7 @@
 /* 顶部时间轴容器 */
 .gc-gantt-view__header {
 	grid-area: header;
-	height: 50px;
+	height: var(--gantt-header-height, 76px);
 	overflow-x: auto;
 	overflow-y: hidden;
 	border-bottom: 1px solid var(--background-modifier-border);
@@ -104,7 +113,8 @@
 /* 左侧任务列表容器 */
 .gc-gantt-view__tasklist {
 	grid-area: tasklist;
-	overflow: hidden;
+	overflow-x: hidden;
+	overflow-y: scroll;
 	min-width: 0;
 	min-height: 0;
 	border-right: 1px solid var(--background-modifier-border);
@@ -127,10 +137,12 @@
 .gc-gantt-view__chart {
 	grid-area: chart;
 	overflow-x: auto;
-	overflow-y: hidden;
+	overflow-y: auto;
 	min-width: 0;
 	min-height: 0;
 	background-color: var(--background-primary);
+	scrollbar-width: thin;
+	scrollbar-color: var(--background-modifier-border) var(--background-primary);
 }
 
 .gc-gantt-view__chart::-webkit-scrollbar {
@@ -149,6 +161,10 @@
 
 .gc-gantt-view__chart::-webkit-scrollbar-thumb:hover {
 	background: var(--text-muted);
+}
+
+.gc-gantt-view__chart::-webkit-scrollbar-corner {
+	background: var(--background-primary);
 }
 
 /* 分隔条 - 覆盖在 Grid 上，使用绝对定位配合 CSS 变量 */
@@ -190,7 +206,7 @@
 	z-index: 50;
 	background-color: var(--background-secondary);
 	border-radius: 8px 8px 0 0;
-	height: 50px;
+	height: var(--gantt-header-height, 76px);
 	flex-shrink: 0;
 }
 
@@ -272,24 +288,39 @@
 }
 
 /* 优先级颜色 */
+.gc-gantt-view__bar-group.priority-highest .task-bar,
 .gc-gantt-view__bar-group .priority-highest {
 	fill: var(--priority-highest-color, #ef4444);
 }
 
+.gc-gantt-view__bar-group.priority-high .task-bar,
 .gc-gantt-view__bar-group .priority-high {
 	fill: var(--priority-high-color, #f97316);
 }
 
+.gc-gantt-view__bar-group.priority-medium .task-bar,
 .gc-gantt-view__bar-group .priority-medium {
 	fill: var(--priority-medium-color, #eab308);
 }
 
-.gc-gantt-view__bar-group .priority-low {
-	fill: var(--priority-low-color, #22c55e);
+.gc-gantt-view__bar-group.priority-normal .task-bar,
+.gc-gantt-view__bar-group .priority-normal {
+	fill: var(--priority-normal-color, #3b82f6);
 }
 
+.gc-gantt-view__bar-group.priority-low .task-bar,
+.gc-gantt-view__bar-group .priority-low {
+	fill: var(--priority-low-color, #6b7280);
+}
+
+.gc-gantt-view__bar-group.priority-lowest .task-bar,
 .gc-gantt-view__bar-group .priority-lowest {
-	fill: var(--priority-lowest-color, #3b82f6);
+	fill: var(--priority-lowest-color, #9ca3af);
+}
+
+.gc-gantt-view__bar-group.priority-none .task-bar,
+.gc-gantt-view__bar-group .priority-none {
+	fill: var(--priority-none-color, #9ca3af);
 }
 
 /* ============================================
@@ -482,3 +513,42 @@ body.gc-is-phone {
 	font-variant-numeric: tabular-nums;
 	user-select: none;
 }
+
+/* ============================================
+   Gantt Calendar Pro - Wzbogacenia wizualne
+   ============================================ */
+
+/* Klamra podsumowująca dla wiersza grupy zadań */
+.gantt-group-bracket {
+	cursor: pointer;
+	transition: opacity 0.2s ease;
+}
+
+.gantt-group-bracket:hover path {
+	stroke: var(--interactive-accent);
+	opacity: 1;
+}
+
+.gantt-group-bracket:hover text {
+	fill: var(--text-normal);
+}
+
+.gantt-group-bracket path {
+	transition: stroke 0.2s ease, opacity 0.2s ease;
+}
+
+/* Wskaźnik dzisiejszego dnia */
+.gantt-today-line {
+	pointer-events: none;
+}
+
+/* Wiersz grupy zadań w liście po lewej */
+.gantt-group-row {
+	user-select: none;
+	transition: background-color 0.15s ease;
+}
+
+.gantt-group-row:hover {
+	background-color: var(--background-modifier-hover);
+}
+

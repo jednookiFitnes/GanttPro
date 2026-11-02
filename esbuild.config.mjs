@@ -1,4 +1,4 @@
-import esbuild from "esbuild";
+import esbuild from "file:///C:/Users/pswie/gantt_modules/node_modules/esbuild/lib/main.js";
 import process from "process";
 import { builtinModules } from "node:module";
 import fs from "node:fs/promises";
@@ -64,6 +64,7 @@ const jsContext = await esbuild.context({
 		...builtinModules],
 	format: "cjs",
 	target: "es2018",
+	nodePaths: ["C:/Users/pswie/gantt_modules/node_modules"],
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
 	treeShaking: true,
@@ -82,6 +83,16 @@ const cssContext = await esbuild.context({
 if (prod) {
 	await jsContext.rebuild();
 	await cssContext.rebuild();
+
+	const vaultPluginDir = "g:/Mój dysk/Obsidian Vaults/Praca Vault/.obsidian/plugins/gantt-calendar-pro";
+	try {
+		await fs.copyFile("main.js", `${vaultPluginDir}/main.js`);
+		await fs.copyFile("styles.css", `${vaultPluginDir}/styles.css`);
+		console.log(`[esbuild] Skopiowano main.js i styles.css do skarbca: ${vaultPluginDir}`);
+	} catch (e) {
+		console.warn(`[esbuild] Nie udało się skopiować do skarbca:`, e?.message || e);
+	}
+
 	process.exit(0);
 } else {
 	await Promise.all([jsContext.watch(), cssContext.watch()]);

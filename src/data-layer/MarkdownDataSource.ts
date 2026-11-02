@@ -29,6 +29,7 @@ import {
 } from './types';
 import { IDataSource, ChangeEventHandler } from './IDataSource';
 import { Logger } from '../utils/logger';
+import { isFileAllowed } from '../utils/folderFilter';
 
 /**
  * 生成任务ID
@@ -115,19 +116,30 @@ export class MarkdownDataSource implements IDataSource {
 	}
 
 	/**
+	 * 检查文件路径是否符合当前文件夹过滤规则
+	 */
+	private isPathAllowed(filePath: string): boolean {
+		return isFileAllowed(filePath, this.config.includeFolders, this.config.excludeFolders);
+	}
+
+	/**
 	 * 初始化数据源
 	 */
 	async initialize(config: DataSourceConfig): Promise<void> {
 		Logger.debug('MarkdownDataSource', 'initialize() started');
 		const scanStartTime = performance.now();
 
-		// 【性能优化】仅当筛选符/格式配置变化时才清空缓存：
+		// 【性能优化】仅当筛选符/格式/文件夹配置变化时才清空缓存：
 		// 配置不变（如无关设置的保存触发重初始化）时，mtime 未变的文件
 		// 可直接跳过重解析（配合 scanAllFiles 的增量跳过），
 		// 大库的重初始化从全量扫描降为只扫变更文件
+		const foldersChanged =
+			(this.config.includeFolders || []).join('|') !== (config.includeFolders || []).join('|') ||
+			(this.config.excludeFolders || []).join('|') !== (config.excludeFolders || []).join('|');
 		const configChanged =
 			this.config.globalFilter !== config.globalFilter ||
-			(this.config.enabledFormats || []).join(',') !== (config.enabledFormats || []).join(',');
+			(this.config.enabledFormats || []).join(',') !== (config.enabledFormats || []).join(',') ||
+			foldersChanged;
 		if (configChanged) {
 			this.cache.clear();
 		}
@@ -175,6 +187,7 @@ export class MarkdownDataSource implements IDataSource {
 
 		// 需要重新解析文件获取完整任务
 		for (const [filePath] of this.cache) {
+			if (!this.isPathAllowed(filePath)) continue;
 			const fileTasks = await this.parseFile(filePath);
 			if (fileTasks) {
 				tasks.push(...fileTasks);
@@ -270,6 +283,22 @@ export class MarkdownDataSource implements IDataSource {
 		try {
 			const oldCache = this.cache.get(filePath);
 
+			if (!this.isPathAllowed(filePath)) {
+				if (oldCache) {
+					this.cache.delete(filePath);
+					if (this.changeHandler) {
+						await this.changeHandler({
+							sourceId: this.sourceId,
+							created: [],
+							updated: [],
+							deleted: [],
+							deletedFilePaths: [filePath]
+						});
+					}
+				}
+				return;
+			}
+
 			const parseResult = await this.parseFileFromContent(filePath);
 			if (parseResult) {
 				this.cache.set(filePath, parseResult.cache);
@@ -333,8 +362,9 @@ export class MarkdownDataSource implements IDataSource {
 	 * 【性能优化】返回所有任务，避免 notifyInitialTasks 时重复解析
 	 */
 	private async scanAllFiles(): Promise<GCTask[]> {
-		const markdownFiles = this.app.vault.getMarkdownFiles();
-		Logger.stats('MarkdownDataSource', `Scanning ${markdownFiles.length} markdown files`);
+		const allMarkdownFiles = this.app.vault.getMarkdownFiles();
+		const markdownFiles = allMarkdownFiles.filter(file => this.isPathAllowed(file.path));
+		Logger.stats('MarkdownDataSource', `Scanning ${markdownFiles.length} markdown files (filtered from ${allMarkdownFiles.length})`);
 
 		const BATCH_SIZE = 50;
 		const batches: TFile[][] = [];
@@ -350,10 +380,10 @@ export class MarkdownDataSource implements IDataSource {
 		let skippedCount = 0;
 		const vaultPaths = new Set(markdownFiles.map(f => f.path));
 
-		// 清理已从 vault 消失的文件的残留缓存（这些任务此前已由
+		// 清理已从 vault 消失或被过滤排除的文件的残留缓存（这些任务此前已由
 		// repository 持有，需要发 deletedFilePaths 让仓库移除）
 		for (const cachedPath of Array.from(this.cache.keys())) {
-			if (!vaultPaths.has(cachedPath)) {
+			if (!vaultPaths.has(cachedPath) || !this.isPathAllowed(cachedPath)) {
 				this.cache.delete(cachedPath);
 				if (this.changeHandler) {
 					await this.changeHandler({
@@ -518,6 +548,7 @@ export class MarkdownDataSource implements IDataSource {
 		// QuickAdd 等插件创建新文件时需要此监听器才能检测到新任务
 		const createRef = this.app.vault.on('create', async (file) => {
 			if (file instanceof TFile && file.extension === 'md') {
+				if (!this.isPathAllowed(file.path)) return;
 				Logger.debug('MarkdownDataSource', `File create event: ${file.path}`);
 
 				this.scheduleFileDebounce(file.path, () => {
@@ -572,21 +603,37 @@ export class MarkdownDataSource implements IDataSource {
 				const oldCache = this.cache.get(oldPath);
 				if (oldCache) {
 					this.cache.delete(oldPath);
-					void (async () => {
-						const parsed = await this.parseFileForScan(file.path).catch(() => null);
-						if (parsed) {
-							this.cache.set(file.path, parsed.cache);
-							await this.changeHandler?.({
+				}
+
+				void (async () => {
+					if (!this.isPathAllowed(file.path)) {
+						if (oldCache && this.changeHandler) {
+							await this.changeHandler({
 								sourceId: this.sourceId,
-								created: parsed.tasks,
+								created: [],
 								updated: [],
 								deleted: [],
 								deletedFilePaths: [oldPath]
 							});
-						} else {
-							// 解析失败（如 metadataCache 未就绪）退化为仅清缓存，
-							// 文件下次被编辑时会走正常 modify 路径补齐
-							this.cache.delete(file.path);
+						}
+						return;
+					}
+
+					const parsed = await this.parseFileForScan(file.path).catch(() => null);
+					if (parsed) {
+						this.cache.set(file.path, parsed.cache);
+						await this.changeHandler?.({
+							sourceId: this.sourceId,
+							created: parsed.tasks,
+							updated: [],
+							deleted: [],
+							deletedFilePaths: oldCache ? [oldPath] : []
+						});
+					} else {
+						// 解析失败（如 metadataCache 未就绪）退化为仅清缓存，
+						// 文件下次被编辑时会走正常 modify 路径补齐
+						this.cache.delete(file.path);
+						if (oldCache) {
 							await this.changeHandler?.({
 								sourceId: this.sourceId,
 								created: [],
@@ -595,8 +642,8 @@ export class MarkdownDataSource implements IDataSource {
 								deletedFilePaths: [oldPath]
 							});
 						}
-					})();
-				}
+					}
+				})();
 			}
 		});
 		this.vaultEventRefs.push(renameRef);

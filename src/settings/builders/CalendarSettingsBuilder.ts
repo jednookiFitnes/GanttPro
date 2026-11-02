@@ -4,7 +4,7 @@ import { BaseBuilder } from './BaseBuilder';
 import { FolderSuggest, FileSuggest } from '../components';
 import type { BuilderConfig } from '../types';
 import { getObsidianDailyNoteSettings, isObsidianDailyNoteAvailable } from '../../utils/dailyNoteSettingsBridge';
-import { i18n } from '../../i18n/i18n';
+import { i18n, isPolishLanguage, isChineseLanguage } from '../../i18n/i18n';
 
 /**
  * 日历设置构建器
@@ -49,9 +49,9 @@ export class CalendarSettingsBuilder extends BaseBuilder {
 			const available = isObsidianDailyNoteAvailable();
 			if (available) {
 				const obsidianSettings = getObsidianDailyNoteSettings();
-				const folder = obsidianSettings.folder || '(根目录)';
+				const folder = obsidianSettings.folder || (isPolishLanguage() ? '(Katalog główny)' : (isChineseLanguage() ? '(根目录)' : '(Root folder)'));
 				const format = obsidianSettings.format || 'YYYY-MM-DD';
-				const template = obsidianSettings.template || '(无)';
+				const template = obsidianSettings.template || (isPolishLanguage() ? '(Brak)' : (isChineseLanguage() ? '(无)' : '(None)'));
 
 				new Setting(obsidianSection)
 					.setName(i18n.t('settings.calendar.obsidianMode.folder.name'))

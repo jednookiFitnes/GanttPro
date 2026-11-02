@@ -1,7 +1,7 @@
 {
-	"name": "gantt-calendar",
-	"version": "1.6.2",
-	"description": "A powerful visual task management plugin. Visualize and manage tasks created by the Tasks plugin, supporting both emoji and Dataview task formats. Support Feishu Task syncing. Support Gantt chart and calendar views.",
+	"name": "gantt-calendar-pro",
+	"version": "2.0.0",
+	"description": "Profesjonalne zarządzanie zadaniami i wykres Gantta dla Obsidian.",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",

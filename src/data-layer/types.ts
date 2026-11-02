@@ -41,6 +41,8 @@ export interface DataSourceConfig {
 	conflictResolution: 'local-win' | 'remote-win' | 'newest-win' | 'manual';
 	globalFilter?: string;
 	enabledFormats?: string[];
+	includeFolders?: string[];
+	excludeFolders?: string[];
 	// API 配置（用于第三方同步）
 	api?: {
 		provider: 'feishu' | 'microsoft-todo' | 'custom';

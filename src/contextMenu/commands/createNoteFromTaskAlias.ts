@@ -1,6 +1,6 @@
 import { App, Modal, Setting } from 'obsidian';
 import type { GCTask } from '../../types';
-import { i18n } from '../../i18n/i18n';
+import { i18n, isPolishLanguage, isChineseLanguage } from '../../i18n/i18n';
 import {
 	createNoteFromTaskCore,
 	checkExistingWikiLink,
@@ -73,7 +73,7 @@ class AliasInputModal extends Modal {
 		contentEl.createEl('h2', { text: i18n.t('contextMenu.commands.enterNoteName') });
 
 		const input = contentEl.createEl('input', { type: 'text', value: '' });
-		input.placeholder = '请输入笔记名称(任务描述为笔记别名)';
+		input.placeholder = isPolishLanguage() ? 'Wpisz nazwę notatki (opis zadania będzie aliasem)' : (isChineseLanguage() ? '请输入笔记名称(任务描述为笔记别名)' : 'Enter note name (task description will be alias)');
 		setCssProps(input, { width: '100%' });
 		input.focus();
 

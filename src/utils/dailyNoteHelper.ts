@@ -6,7 +6,7 @@
 
 import { App, Notice, TFile, TFolder } from 'obsidian';
 import type { GanttCalendarSettings } from '../settings';
-import { i18n } from '../i18n/i18n';
+import { i18n, isPolishLanguage, isChineseLanguage } from '../i18n/i18n';
 import { formatDate } from '../dateUtils/dateUtilsIndex';
 import { Logger } from './logger';
 import type { DailyNoteIndex } from './dailyNoteSettingsBridge';
@@ -116,8 +116,13 @@ export async function createTaskInDailyNote(
 		if (!file) {
 			// 弹出确认对话框
 			const confirmed = await showConfirmDialog(
-				app, 'Daily Note 不存在', '当天的 Daily Note 尚未创建，是否现在创建？',
-				{ confirmText: '创建', cancelText: '取消' }
+				app,
+				isPolishLanguage() ? 'Brak notatki dziennej' : (isChineseLanguage() ? 'Daily Note 不存在' : 'Daily Note does not exist'),
+				isPolishLanguage() ? 'Dzisiejsza notatka dzienna nie została jeszcze utworzona. Czy chcesz ją utworzyć teraz?' : (isChineseLanguage() ? '当天的 Daily Note 尚未创建，是否现在创建？' : "Today's Daily Note has not been created yet. Create it now?"),
+				{
+					confirmText: isPolishLanguage() ? 'Utwórz' : (isChineseLanguage() ? '创建' : 'Create'),
+					cancelText: isPolishLanguage() ? 'Anuluj' : (isChineseLanguage() ? '取消' : 'Cancel')
+				}
 			);
 			if (!confirmed) {
 				new Notice(i18n.t('dailyNote.createCancelled'));
@@ -166,8 +171,13 @@ async function handleMissingDailyNote(
 ): Promise<string | null> {
 	// 弹出确认对话框
 	const confirmed = await showConfirmDialog(
-		app, 'Daily Note 不存在', '当天的 Daily Note 尚未创建，是否现在创建？',
-		{ confirmText: '创建', cancelText: '取消' }
+		app,
+				isPolishLanguage() ? 'Brak notatki dziennej' : (isChineseLanguage() ? 'Daily Note 不存在' : 'Daily Note does not exist'),
+				isPolishLanguage() ? 'Dzisiejsza notatka dzienna nie została jeszcze utworzona. Czy chcesz ją utworzyć teraz?' : (isChineseLanguage() ? '当天的 Daily Note 尚未创建，是否现在创建？' : "Today's Daily Note has not been created yet. Create it now?"),
+				{
+					confirmText: isPolishLanguage() ? 'Utwórz' : (isChineseLanguage() ? '创建' : 'Create'),
+					cancelText: isPolishLanguage() ? 'Anuluj' : (isChineseLanguage() ? '取消' : 'Cancel')
+				}
 	);
 
 	if (!confirmed) {
@@ -218,7 +228,7 @@ async function createDailyNoteFromTemplate(
 			content = await app.vault.read(templateFile);
 			content = replaceTemplateVariables(content, filePath);
 		} else {
-			throw new Error(`模板文件未找到: ${templatePath}`);
+			throw new Error(isPolishLanguage() ? `Nie znaleziono pliku szablonu: ${templatePath}` : (isChineseLanguage() ? `模板文件未找到: ${templatePath}` : `Template file not found: ${templatePath}`));
 		}
 	}
 

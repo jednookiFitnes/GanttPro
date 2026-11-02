@@ -18,6 +18,9 @@ Author: sugar
 	--gc-festival-lunar: #e8a041;    /* 农历节日 - 橙色 */
 	--gc-festival-solar-term: #52c41a; /* 节气 - 绿色 */
 
+	/* Vacation Color */
+	--gc-vacation-color: #f97316;    /* Urlop - pomarańczowy */
+
 	/* Task Status Colors */
 	--gc-task-completed: #52c41a;
 	--gc-task-pending: #ff7a45;

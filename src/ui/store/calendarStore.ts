@@ -37,8 +37,18 @@ interface CalendarStoreState {
 	/** 甘特图滚动请求（工具栏按钮 → GanttView 引擎） */
 	ganttScroll: { seq: number; action: GanttScrollAction } | null;
 
+	/** 甘特图分组模式 (none, folder, priority) */
+	ganttGroupBy: 'none' | 'folder' | 'priority';
+	/** Widok zadań (TaskView) tryb grupowania (none, folder, priority) */
+	taskViewGroupBy: 'none' | 'folder' | 'priority';
+	/** Panel boczny zadań (Sidebar) tryb grupowania (none, folder, priority) */
+	sidebarTaskGroupBy: 'none' | 'folder' | 'priority';
+
 	setViewType: (type: CalendarViewType) => void;
 	setCurrentDate: (date: Date) => void;
+	setGanttGroupBy: (mode: 'none' | 'folder' | 'priority') => void;
+	setTaskViewGroupBy: (mode: 'none' | 'folder' | 'priority') => void;
+	setSidebarTaskGroupBy: (mode: 'none' | 'folder' | 'priority') => void;
 	/** 数据层 TaskStore 通知时调用（防抖已由 TaskStore 处理） */
 	notifyTasksUpdated: (tasks: GCTask[], filePath?: string) => void;
 	setTasks: (tasks: GCTask[]) => void;
@@ -124,7 +134,7 @@ export function pruneTagFilters(
 }
 
 export const useCalendarStore = create<CalendarStoreState>((set) => ({
-	viewType: 'year',
+	viewType: 'gantt',
 	currentDate: new Date(),
 	tasks: [],
 	changedFilePath: undefined,
@@ -132,9 +142,15 @@ export const useCalendarStore = create<CalendarStoreState>((set) => ({
 	viewFilters: buildInitialFilters(),
 	settingsVersion: 0,
 	ganttScroll: null,
+	ganttGroupBy: 'folder',
+	taskViewGroupBy: 'folder',
+	sidebarTaskGroupBy: 'folder',
 
 	setViewType: (type) => set({ viewType: type }),
 	setCurrentDate: (date) => set({ currentDate: new Date(date) }),
+	setGanttGroupBy: (mode) => set({ ganttGroupBy: mode }),
+	setTaskViewGroupBy: (mode) => set({ taskViewGroupBy: mode }),
+	setSidebarTaskGroupBy: (mode) => set({ sidebarTaskGroupBy: mode }),
 	notifyTasksUpdated: (tasks, filePath) =>
 		set((s) => {
 			// 同一次 TaskStore 防抖冲刷会被主视图和侧栏两个订阅者各转发一次，

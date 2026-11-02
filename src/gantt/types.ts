@@ -99,6 +99,8 @@ export interface GanttChartConfig {
 	granularity?: TimeGranularity;
 	/** 语言代码 */
 	language: string;
+	/** Tryb grupowania zadań: 'none' | 'folder' | 'priority' */
+	group_by?: 'none' | 'folder' | 'priority';
 	/** 头部高度 (px) */
 	header_height?: number;
 	/** 列宽度 (px) */
@@ -119,6 +121,8 @@ export interface GanttChartConfig {
 	custom_popup_html?: (task: GanttChartTask) => string;
 	/** 点击任务回调 */
 	on_click?: (task: GanttChartTask) => void;
+	/** 右键点击任务回调 */
+	on_context_menu?: (task: GanttChartTask, event: MouseEvent) => void;
 	/** 日期变更回调 */
 	on_date_change?: (task: GanttChartTask, start: Date, end: Date) => void;
 	/** 进度变更回调 */

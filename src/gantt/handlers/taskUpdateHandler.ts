@@ -73,10 +73,18 @@ export class TaskUpdateHandler {
 			// timed task (yyyy-MM-dd HH:mm) does not lose its time on write-back.
 			const originalStartDate = getTaskDateField(ganttTask as unknown as GCTask, writeStartTo);
 			const originalEndDate = getTaskDateField(ganttTask as unknown as GCTask, endField);
-			const updates: Record<string, Date> = {
+			const updates: Record<string, any> = {
 				[writeStartTo]: this.preserveTimeOfDay(newStart, originalStartDate, ganttTask.datePrecision?.[writeStartTo]),
 				[endField]: this.preserveTimeOfDay(newEnd, originalEndDate, ganttTask.datePrecision?.[endField]),
+				datePrecision: {
+					...ganttTask.datePrecision,
+					[writeStartTo]: ganttTask.datePrecision?.[writeStartTo] || 'day',
+					[endField]: ganttTask.datePrecision?.[endField] || 'day',
+				},
 			};
+			if (updates[endField] && updates[writeStartTo] && updates[endField] < updates[writeStartTo]) {
+				updates[endField] = new Date(updates[writeStartTo]);
+			}
 
 			// 使用 updateTaskProperties
 			const { updateTaskProperties } = await import('../../tasks/taskUpdater');
@@ -88,6 +96,13 @@ export class TaskUpdateHandler {
 				updates,
 				this.plugin.settings.enabledTaskFormats
 			);
+
+			// Natychmiastowe odświeżenie pamięci podręcznej zadań i powiadomienie calendarStore
+			if (this.plugin?.taskCache) {
+				await this.plugin.taskCache.refreshFile(ganttTask.filePath);
+				const { useCalendarStore } = await import('../../ui/store/calendarStore');
+				useCalendarStore.getState().notifyTasksUpdated(this.plugin.taskCache.getAllTasks(), ganttTask.filePath);
+			}
 
 			// 显示通知
 			new Notice(i18n.t('gantt.timeUpdated', { start: formatDate(newStart, 'yyyy-MM-dd'), end: formatDate(newEnd, 'yyyy-MM-dd') }));

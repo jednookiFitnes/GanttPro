@@ -3,7 +3,7 @@ import type { GCTask } from '../../types';
 import { formatDate } from '../../dateUtils/dateUtilsIndex';
 import { updateTaskProperties, refreshTaskView } from '../../tasks/taskUpdater';
 import { Logger } from '../../utils/logger';
-import { i18n } from '../../i18n/i18n';
+import { i18n, isPolishLanguage, isChineseLanguage } from '../../i18n/i18n';
 
 // ==================== 类型定义 ====================
 
@@ -103,52 +103,52 @@ export function generateNoteContent(data: NoteTemplateData): string {
 	const { title, task, markdownLinks = [], rawUrls = [] } = data;
 	const lines: string[] = [];
 
+	const isPl = isPolishLanguage();
+	const isZh = isChineseLanguage();
 	lines.push(`# ${title}`);
 	lines.push('');
-	lines.push('## 任务信息');
+	lines.push(isPl ? '## Informacje o zadaniu' : (isZh ? '## 任务信息' : '## Task Information'));
 	lines.push('');
 
 	if (task.priority) {
-		lines.push(`- **优先级**: ${task.priority}`);
+		lines.push(`- **${isPl ? 'Priorytet' : (isZh ? '优先级' : 'Priority')}**: ${task.priority}`);
 	}
 
 	if (task.tags && task.tags.length > 0) {
-		lines.push(`- **标签**: ${task.tags.map(t => `#${t}`).join(' ')}`);
+		lines.push(`- **${isPl ? 'Tagi' : (isZh ? '标签' : 'Tags')}**: ${task.tags.map(t => `#${t}`).join(' ')}`);
 	}
 
 	if (task.createdDate) {
-		lines.push(`- **创建日期**: ${formatDate(task.createdDate, 'yyyy-MM-dd')}`);
+		lines.push(`- **${isPl ? 'Data utworzenia' : (isZh ? '创建日期' : 'Created Date')}**: ${formatDate(task.createdDate, 'yyyy-MM-dd')}`);
 	}
 
 	if (task.startDate) {
-		lines.push(`- **开始日期**: ${formatDate(task.startDate, 'yyyy-MM-dd')}`);
+		lines.push(`- **${isPl ? 'Data rozpoczęcia' : (isZh ? '开始日期' : 'Start Date')}**: ${formatDate(task.startDate, 'yyyy-MM-dd')}`);
 	}
 
 	if (task.scheduledDate) {
-		lines.push(`- **计划日期**: ${formatDate(task.scheduledDate, 'yyyy-MM-dd')}`);
+		lines.push(`- **${isPl ? 'Data zaplanowania' : (isZh ? '计划日期' : 'Scheduled Date')}**: ${formatDate(task.scheduledDate, 'yyyy-MM-dd')}`);
 	}
 
 	if (task.dueDate) {
-		lines.push(`- **截止日期**: ${formatDate(task.dueDate, 'yyyy-MM-dd')}`);
+		lines.push(`- **${isPl ? 'Termin wykonania' : (isZh ? '截止日期' : 'Due Date')}**: ${formatDate(task.dueDate, 'yyyy-MM-dd')}`);
 	}
 
 	if (task.completionDate) {
-		lines.push(`- **完成日期**: ${formatDate(task.completionDate, 'yyyy-MM-dd')}`);
+		lines.push(`- **${isPl ? 'Data ukończenia' : (isZh ? '完成日期' : 'Completion Date')}**: ${formatDate(task.completionDate, 'yyyy-MM-dd')}`);
 	}
 
 	if (task.cancelledDate) {
-		lines.push(`- **取消日期**: ${formatDate(task.cancelledDate, 'yyyy-MM-dd')}`);
+		lines.push(`- **${isPl ? 'Data anulowania' : (isZh ? '取消日期' : 'Cancelled Date')}**: ${formatDate(task.cancelledDate, 'yyyy-MM-dd')}`);
 	}
 
-	// 如果有原任务描述（别名笔记的情况）
 	if (data.originalDescription) {
-		lines.push(`- **原任务**: ${data.originalDescription}`);
+		lines.push(`- **${isPl ? 'Oryginalne zadanie' : (isZh ? '原任务' : 'Original Task')}**: ${data.originalDescription}`);
 	}
 
-	// 参考链接
 	if (markdownLinks.length || rawUrls.length) {
 		lines.push('');
-		lines.push('## Reference');
+		lines.push(isPl ? '## Odnośniki' : (isZh ? '## Reference' : '## References'));
 		lines.push('');
 		for (const l of markdownLinks) {
 			lines.push(`- [${l.text}](${l.url})`);
@@ -159,9 +159,9 @@ export function generateNoteContent(data: NoteTemplateData): string {
 	}
 
 	lines.push('');
-	lines.push(`- **来源**: [[${task.fileName}#^line-${task.lineNumber}|${task.fileName}:${task.lineNumber}]]`);
+	lines.push(`- **${isPl ? 'Źródło' : (isZh ? '来源' : 'Source')}**: [[${task.fileName}#^line-${task.lineNumber}|${task.fileName}:${task.lineNumber}]]`);
 	lines.push('');
-	lines.push('## 笔记内容');
+	lines.push(isPl ? '## Treść notatki' : (isZh ? '## 笔记内容' : '## Note Content'));
 	lines.push('');
 
 	return lines.join('\n');

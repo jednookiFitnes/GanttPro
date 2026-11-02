@@ -61,6 +61,7 @@ export function DayView(): JSX.Element {
 		showTags: plugin.settings.dayViewShowTags ?? true,
 		showPriority: plugin.settings.dayViewShowPriority ?? true,
 		showTicktick: plugin.settings.dayViewShowTicktick ?? true,
+		showFolder: plugin.settings.sidebarShowFolder ?? true,
 		variant: 'timeline' as const,
 	}), [plugin.settings]);
 
@@ -206,40 +207,60 @@ export function DayView(): JSX.Element {
 	}, [editorMode]);
 
 	// ===== 任务区渲染：全天区（始终渲染为拖放目标，与侧栏统一） + 共享连续画布 =====
-	const renderTaskList = (): JSX.Element => (
-		<>
-			<div className={DayViewClasses.elements.alldaySection} {...allDayDropProps}>
-				<div className={DayViewClasses.elements.alldayLabel}>
-					{i18n.t('views.weekView.allDay')}
+	const renderTaskList = (): JSX.Element => {
+		const vacation = plugin.vacationService?.getVacation(normalized);
+		return (
+			<>
+				{vacation ? (
+					<div
+						className={DayViewClasses.elements.vacationBanner}
+						title={`🏖️ URLOP: ${vacation.type}${vacation.project ? ` (${vacation.project})` : ''}${vacation.remarks ? ` — ${vacation.remarks}` : ''}`}
+					>
+						<span className={DayViewClasses.elements.vacationIcon}>🏖️</span>
+						<span className={DayViewClasses.elements.vacationTitle}>{vacation.type}</span>
+						{vacation.project ? (
+							<span className={DayViewClasses.elements.vacationProject}>({vacation.project})</span>
+						) : null}
+						{vacation.remarks ? (
+							<span className={DayViewClasses.elements.vacationRemarks}>— {vacation.remarks}</span>
+						) : null}
+					</div>
+				) : null}
+				<div className={DayViewClasses.elements.alldaySection} {...allDayDropProps}>
+					<div className={DayViewClasses.elements.alldayLabel}>
+						{i18n.t('views.weekView.allDay')}
+					</div>
+					<div className={DayViewClasses.elements.alldayTasks}>
+						{model.allday.map(({ task, timeLabel }) => (
+							<div key={`${task.filePath}:${task.lineNumber}`} className={DayViewClasses.elements.alldayItem}>
+								<TaskCard
+									task={task}
+									config={timelineConfig}
+									targetDate={normalized}
+									onRefresh={handleCardRefresh}
+								/>
+								{timeLabel ? (
+									<span className={DayViewClasses.elements.alldayTime}>{timeLabel}</span>
+								) : null}
+							</div>
+						))}
+					</div>
 				</div>
-				<div className={DayViewClasses.elements.alldayTasks}>
-					{model.allday.map(({ task, timeLabel }) => (
-						<div key={`${task.filePath}:${task.lineNumber}`} className={DayViewClasses.elements.alldayItem}>
-							<TaskCard
-								task={task}
-								config={timelineConfig}
-								targetDate={normalized}
-								onRefresh={handleCardRefresh}
-							/>
-							{timeLabel ? (
-								<span className={DayViewClasses.elements.alldayTime}>{timeLabel}</span>
-							) : null}
-						</div>
-					))}
-				</div>
-			</div>
-			{model.blocks.length === 0 && model.allday.length === 0 ? (
-				<div className="gantt-task-empty">{i18n.t('common.noTasks')}</div>
-			) : null}
-			<DayTimelineCanvas
-				day={normalized}
-				model={model}
-				config={timelineConfig}
-				tasks={dragLookupTasks}
-				refresh={handleCardRefresh}
-			/>
-		</>
-	);
+				{model.blocks.length === 0 && model.allday.length === 0 ? (
+					<div className="gantt-task-empty">{i18n.t('common.noTasks')}</div>
+				) : null}
+				<DayTimelineCanvas
+					day={normalized}
+					model={model}
+					config={timelineConfig}
+					tasks={dragLookupTasks}
+					refresh={handleCardRefresh}
+					startHourBaseline={6}
+					endHourBaseline={18}
+				/>
+			</>
+		);
+	};
 
 	// ===== 仅任务模式（不显示 Daily Note） =====
 	if (!enableDailyNote) {

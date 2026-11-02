@@ -9,16 +9,16 @@ import { i18n } from '../i18n/i18n';
  * @param plugin 插件实例
  */
 export function registerCommonCommands(plugin: GanttCalendarPlugin): void {
-	// 打开日历视图
+	// 打开日历 / Gantt 视图
 	plugin.addCommand({
 		id: 'open-calendar-view',
-		name: i18n.t('commands.openCalendarView'),
+		name: i18n.t('commands.openCalendarView') || 'Open Gantt View',
 		callback: async () => {
 			await plugin.activateView();
 			const leaf = plugin.app.workspace.getLeavesOfType(GC_VIEW_ID)[0];
 			const view = leaf?.view as unknown as GCMainView | undefined;
 			if (view) {
-				view.switchView('month');
+				view.switchView('gantt');
 			}
 		}
 	});

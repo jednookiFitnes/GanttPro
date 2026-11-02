@@ -39,6 +39,7 @@ export function WeekView(): JSX.Element {
 		showTags: plugin.settings.weekViewShowTags,
 		showPriority: plugin.settings.weekViewShowPriority,
 		showTicktick: plugin.settings.weekViewShowTicktick,
+		showFolder: plugin.settings.weekViewShowFolder ?? true,
 	}), [plugin.settings]);
 	// 时间块使用紧凑变体，高度由块容器按时长撑开
 	const timelineConfig = useMemo(() => ({ ...config, variant: 'timeline' as const }), [config]);

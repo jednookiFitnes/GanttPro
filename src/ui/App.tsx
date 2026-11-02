@@ -1,4 +1,4 @@
-import { type JSX } from 'react';
+import { Component, type ReactNode, type JSX } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useCalendarStore } from './store/calendarStore';
 import { ToolbarBar } from './components/Toolbar';
@@ -14,6 +14,66 @@ import type { CalendarViewType } from '../types';
 import { MOTION, easeOutTransition } from './motion';
 import { useEffect } from 'react';
 import { isPhoneNow } from './utils/platform';
+
+interface ErrorBoundaryProps {
+	children: ReactNode;
+	viewKey?: string;
+}
+
+interface ErrorBoundaryState {
+	hasError: boolean;
+	error: Error | null;
+}
+
+class ViewErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+	constructor(props: ErrorBoundaryProps) {
+		super(props);
+		this.state = { hasError: false, error: null };
+	}
+
+	static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+		return { hasError: true, error };
+	}
+
+	componentDidCatch(error: Error, info: unknown) {
+		console.error('[GanttCalendar ViewErrorBoundary]', error, info);
+	}
+
+	componentDidUpdate(prevProps: ErrorBoundaryProps) {
+		if (prevProps.viewKey !== this.props.viewKey && this.state.hasError) {
+			this.setState({ hasError: false, error: null });
+		}
+	}
+
+	render() {
+		if (this.state.hasError) {
+			return (
+				<div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-error, #f87171)' }}>
+					<h3 style={{ margin: '0 0 8px 0', fontSize: '16px' }}>Wystąpił błąd podczas ładowania widoku</h3>
+					<p style={{ color: 'var(--text-muted)', fontSize: '13px', margin: '0 0 16px 0' }}>
+						{this.state.error?.message || 'Nieznany błąd renderowania'}
+					</p>
+					<button
+						type="button"
+						style={{
+							padding: '6px 14px',
+							borderRadius: '4px',
+							border: '1px solid var(--background-modifier-border)',
+							background: 'var(--interactive-accent)',
+							color: 'var(--text-on-accent, #ffffff)',
+							cursor: 'pointer',
+							fontSize: '13px',
+						}}
+						onClick={() => this.setState({ hasError: false, error: null })}
+					>
+						Spróbuj ponownie
+					</button>
+				</div>
+			);
+		}
+		return this.props.children;
+	}
+}
 
 function renderView(viewType: CalendarViewType): JSX.Element {
 	switch (viewType) {
@@ -68,14 +128,18 @@ export function App(): JSX.Element {
 								exit={{ opacity: 0 }}
 								transition={easeOutTransition(MOTION.dur.normal)}
 							>
-								{renderView(viewType)}
+								<ViewErrorBoundary viewKey={`${viewType}-${settingsVersion}`}>
+									{renderView(viewType)}
+								</ViewErrorBoundary>
 							</motion.div>
 						) : (
 							<div
 								key={`gantt-${settingsVersion}`}
 								className="calendar-content gantt-mode"
 							>
-								<GanttView />
+								<ViewErrorBoundary viewKey={`gantt-${settingsVersion}`}>
+									<GanttView />
+								</ViewErrorBoundary>
 							</div>
 						)}
 					</AnimatePresence>

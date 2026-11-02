@@ -9,14 +9,50 @@ import type { GCTask, SortField, SortState } from '../types';
  * 排序选项配置
  * 每个选项包含字段标识、显示图标和标签
  */
+import { isPolishLanguage, isChineseLanguage } from '../i18n/i18n';
+
+export function getSortFieldLabel(field: SortField): string {
+	if (isPolishLanguage()) {
+		switch (field) {
+			case 'priority': return 'Priorytet';
+			case 'description': return 'Alfabetycznie';
+			case 'createdDate': return 'Data utworzenia';
+			case 'startDate': return 'Data rozpoczęcia';
+			case 'scheduledDate': return 'Data zaplanowania';
+			case 'dueDate': return 'Termin wykonania';
+			case 'completionDate': return 'Data ukończenia';
+		}
+	}
+	if (isChineseLanguage()) {
+		switch (field) {
+			case 'priority': return '优先级';
+			case 'description': return '字母排序';
+			case 'createdDate': return '创建时间';
+			case 'startDate': return '开始时间';
+			case 'scheduledDate': return '规划时间';
+			case 'dueDate': return '截止时间';
+			case 'completionDate': return '完成时间';
+		}
+	}
+	switch (field) {
+		case 'priority': return 'Priority';
+		case 'description': return 'Alphabetical';
+		case 'createdDate': return 'Created Date';
+		case 'startDate': return 'Start Date';
+		case 'scheduledDate': return 'Scheduled Date';
+		case 'dueDate': return 'Due Date';
+		case 'completionDate': return 'Completion Date';
+	}
+}
+
 export const SORT_OPTIONS: Array<{ field: SortField; icon: string; label: string }> = [
-	{ field: 'priority', icon: '🔺', label: '优先级' },
-	{ field: 'description', icon: '🔤', label: '字母排序' },
-	{ field: 'createdDate', icon: '➕', label: '创建时间' },
-	{ field: 'startDate', icon: '🛫', label: '开始时间' },
-	{ field: 'scheduledDate', icon: '⏳', label: '规划时间' },
-	{ field: 'dueDate', icon: '📅', label: '截止时间' },
-	{ field: 'completionDate', icon: '✅', label: '完成时间' },
+	{ field: 'priority', icon: '🔺', get label() { return getSortFieldLabel('priority'); } },
+	{ field: 'description', icon: '🔤', get label() { return getSortFieldLabel('description'); } },
+	{ field: 'createdDate', icon: '➕', get label() { return getSortFieldLabel('createdDate'); } },
+	{ field: 'startDate', icon: '🛫', get label() { return getSortFieldLabel('startDate'); } },
+	{ field: 'scheduledDate', icon: '⏳', get label() { return getSortFieldLabel('scheduledDate'); } },
+	{ field: 'dueDate', icon: '📅', get label() { return getSortFieldLabel('dueDate'); } },
+	{ field: 'completionDate', icon: '✅', get label() { return getSortFieldLabel('completionDate'); } },
 ];
 
 /**

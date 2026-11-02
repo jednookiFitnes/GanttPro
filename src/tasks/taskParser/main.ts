@@ -147,7 +147,7 @@ export function parseTasksFromListItems(
         // ==================== 警告检查 ====================
         // 混合格式警告
         if (detectedFormat === 'mixed') {
-            task.warning = '混用任务格式，请修改';
+            task.warning = isPolishLanguage() ? 'Mieszany format zadania, zmodyfikuj' : (isChineseLanguage() ? '混用任务格式，请修改' : 'Mixed task format, please modify');
         }
         // 未规划时间警告
         else if (
@@ -159,7 +159,7 @@ export function parseTasksFromListItems(
             !task.cancelledDate &&
             !task.completionDate
         ) {
-            task.warning = '未规划任务时间，请设置';
+            task.warning = isPolishLanguage() ? 'Brak zaplanowanego czasu zadania, ustaw datę' : (isChineseLanguage() ? '未规划任务时间，请设置' : 'No planned task date, please set');
         }
 
         tasks.push(task);
@@ -336,7 +336,7 @@ export function parseSingleTaskLine(
     }
 
     if (detectedFormat === 'mixed') {
-        task.warning = '混用任务格式，请修改';
+        task.warning = isPolishLanguage() ? 'Mieszany format zadania, zmodyfikuj' : (isChineseLanguage() ? '混用任务格式，请修改' : 'Mixed task format, please modify');
     }
 
     return task;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
-import { i18n } from '../../i18n/i18n';
+import { i18n, isPolishLanguage, isChineseLanguage } from '../../i18n/i18n';
 import { EditTaskModalClasses } from '../../utils/bem';
 import { Icon } from '../components/Icon';
 import { buildRepeatRule, parseRepeatToConfig, validateRepeatRule, type RepeatConfig } from '../../utils/repeatRules';
@@ -179,7 +179,7 @@ export function RepeatSection({ value, onChange, prefix }: RepeatSectionProps): 
 					style={{ display: ui.freq ? undefined : 'none' }}
 					onClick={clearAll}
 				>
-					{'× 清除'}
+					{isPolishLanguage() ? '× Wyczyść' : (isChineseLanguage() ? '× 清除' : '× Clear')}
 				</button>
 			</div>
 

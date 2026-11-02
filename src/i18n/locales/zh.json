@@ -283,6 +283,20 @@
           "name": "任务文本显示 Global Filter",
           "description": "在任务列表中文本前显示全局筛选前缀（如 🎯）。关闭则仅显示任务描述"
         },
+        "includeFolders": {
+          "name": "包含任务文件夹",
+          "description": "仅显示来自这些文件夹及其子文件夹的任务。留空则显示所有文件夹的任务。",
+          "placeholder": "选择或输入文件夹路径...",
+          "add": "添加",
+          "empty": "包含所有文件夹（无限制）"
+        },
+        "excludeFolders": {
+          "name": "忽略任务文件夹",
+          "description": "忽略来自这些文件夹及其子文件夹的任务。优先级高于包含设置。",
+          "placeholder": "选择或输入文件夹路径...",
+          "add": "添加",
+          "empty": "未忽略任何文件夹"
+        },
         "taskNotePath": {
           "name": "任务笔记文件夹路径",
           "description": "从任务创建笔记时的默认存放路径（相对于库根目录）"
@@ -1370,7 +1384,8 @@
         "priorityFilter": "优先级筛选",
         "tagFilter": "标签筛选",
         "sort": "排序",
-        "dateFilter": "日期筛选"
+        "dateFilter": "日期筛选",
+        "ganttFilter": "甘特图筛选"
       },
       "priority": {
         "all": "全部",
@@ -1393,6 +1408,11 @@
         "today": "今天",
         "thisWeek": "本周",
         "thisMonth": "本月"
+      },
+      "ganttFilterOptions": {
+        "all": "全部任务",
+        "notInGantt": "甘特图外 (无起止日期)",
+        "inGantt": "甘特图中 (有起止日期)"
       },
       "tagFilter": {
         "matchMode": "匹配模式: "
@@ -1419,7 +1439,25 @@
         "goToday": "回到今天"
       },
       "noTasks": "这一天没有任务",
+      "noMatchingTasks": "没有匹配的任务",
+      "searchPlaceholder": "搜索任务...",
+      "filterBar": {
+        "statusFilter": "状态筛选",
+        "priorityFilter": "优先级筛选",
+        "tagFilter": "标签筛选",
+        "hideCompleted": "隐藏已完成",
+        "showCompleted": "显示已完成",
+        "clearFilters": "清除筛选"
+      },
+      "viewMode": {
+        "timeline": "切换至时间线网格视图",
+        "agenda": "切换至日程列表视图"
+      },
       "allDay": "全天",
+      "timedTasks": "日程安排",
+      "noTimedTasks": "暂无定时任务",
+      "moreTasks": "+{{count}} 更多",
+      "clusterModalTitle": "此时段任务",
       "alldayMore": "还有 {{count}} 个全天任务…",
       "alldayCollapse": "收起全天任务"
     }

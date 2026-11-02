@@ -33,6 +33,7 @@ interface ActiveResize {
 	newEndMin: number;
 	changed: boolean;
 	tipEl: HTMLElement;
+	startMin: number;
 }
 
 interface DragHandlers {
@@ -110,6 +111,7 @@ export function useBlockResize(onCommit: BlockResizeCommit) {
 		edge: 'top' | 'bottom',
 		columnEl: HTMLElement,
 		blockEl: HTMLElement,
+		startMin: number = 0,
 	): boolean => {
 		if (e.button !== 0) return false;
 		e.preventDefault();
@@ -130,12 +132,13 @@ export function useBlockResize(onCommit: BlockResizeCommit) {
 			newEndMin: seg.endMin,
 			changed: false,
 			tipEl,
+			startMin,
 		};
 		activeRef.current = active;
 
 		const move = (ev: PointerEvent) => {
 			const rect = active.columnEl.getBoundingClientRect();
-			const minutes = snapMinutes(pxToMinutes(ev.clientY - rect.top), ev.altKey);
+			const minutes = snapMinutes(active.startMin + pxToMinutes(ev.clientY - rect.top), ev.altKey);
 
 			if (active.edge === 'top') {
 				// 上边缘：钳制 [0, 段终点 - 最小时长]
@@ -149,7 +152,7 @@ export function useBlockResize(onCommit: BlockResizeCommit) {
 			active.changed = true;
 
 			// 乐观 DOM 预览
-			active.blockEl.style.top = `${minutesToPx(active.newStartMin)}px`;
+			active.blockEl.style.top = `${minutesToPx(active.newStartMin - active.startMin)}px`;
 			active.blockEl.style.height = `${minutesToPx(active.newEndMin - active.newStartMin)}px`;
 			const label = active.blockEl.querySelector(`.${WeekViewClasses.elements.timeBlockTime}`);
 			if (label) label.textContent = `${formatMinutes(active.newStartMin)} – ${formatMinutes(active.newEndMin)}`;

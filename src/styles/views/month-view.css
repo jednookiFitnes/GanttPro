@@ -123,23 +123,66 @@
 	white-space: nowrap;
 }
 
-/* 今天：accent 淡染 + 数字反白徽标 */
+/* 今天：accent 淡染 + 明显边框 + 数字反白徽标 */
 .gc-month-view__day-cell--today {
-	background-color: color-mix(in srgb, var(--gc-accent) 6%, var(--background-primary));
+	background-color: color-mix(in srgb, var(--interactive-accent, var(--gc-accent)) 8%, var(--background-primary));
+	box-shadow: inset 0 0 0 2px var(--interactive-accent, var(--gc-accent));
+	z-index: 2;
 }
 
 .gc-month-view__day-cell--today:hover {
-	background-color: color-mix(in srgb, var(--gc-accent) 9%, var(--background-primary));
+	background-color: color-mix(in srgb, var(--interactive-accent, var(--gc-accent)) 12%, var(--background-primary));
+}
+
+.gc-month-view__day-cell--today .gc-month-view__day-header {
+	background-color: color-mix(in srgb, var(--interactive-accent, var(--gc-accent)) 18%, transparent);
+	border-bottom: 1.5px solid var(--interactive-accent, var(--gc-accent));
 }
 
 .gc-month-view__day-cell--today .gc-month-view__day-number {
-	background-color: var(--gc-accent);
-	color: var(--gc-on-accent);
-	font-weight: 700;
+	background-color: var(--interactive-accent, var(--gc-accent));
+	color: #ffffff;
+	font-weight: 800;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
 
 .gc-month-view__day-cell--today .gc-month-view__lunar-text {
-	color: var(--gc-accent);
+	color: var(--interactive-accent, var(--gc-accent));
+	font-weight: 700;
+}
+
+/* Urlop: delikatna pomarańczowa poświata + subtelna czerwona ukośna szrafura */
+.gc-month-view__day-cell--vacation {
+	background-color: color-mix(in srgb, var(--gc-vacation-color, #f97316) 7%, var(--background-primary));
+	background-image: repeating-linear-gradient(
+		-45deg,
+		rgba(239, 68, 68, 0.12) 0,
+		rgba(239, 68, 68, 0.12) 2px,
+		transparent 2px,
+		transparent 8px
+	);
+}
+
+.gc-month-view__day-cell--vacation:hover {
+	background-color: color-mix(in srgb, var(--gc-vacation-color, #f97316) 12%, var(--background-primary));
+}
+
+.gc-month-view__day-cell--vacation.gc-month-view__day-cell--today {
+	background-color: color-mix(in srgb, var(--gc-vacation-color, #f97316) 10%, color-mix(in srgb, var(--gc-accent) 6%, var(--background-primary)));
+}
+
+.gc-month-view__day-number--vacation {
+	color: var(--gc-vacation-color, #f97316) !important;
+	font-weight: 700;
+}
+
+.gc-month-view__vacation-dot {
+	width: 5px;
+	height: 5px;
+	border-radius: 50%;
+	background-color: var(--gc-vacation-color, #f97316);
+	flex-shrink: 0;
+	cursor: help;
 }
 
 /* 非当月日期：整格弱化，不用透明度砸内容 */

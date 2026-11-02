@@ -41,6 +41,8 @@ export class TaskStore {
 	private markdownSource: MarkdownDataSource;
 	private globalTaskFilter: string = '';
 	private enabledFormats: string[] = ['tasks', 'dataview'];
+	private includeFolders: string[] = [];
+	private excludeFolders: string[] = [];
 	private isInitialized: boolean = false;
 	private isInitializing: boolean = false;
 	/** 初始化完成门闩：whenReady() 等待此 Promise（initPromise 实现） */
@@ -76,7 +78,9 @@ export class TaskStore {
 			autoSync: true,
 			conflictResolution: 'local-win',
 			globalFilter: '',
-			enabledFormats: ['tasks', 'dataview']
+			enabledFormats: ['tasks', 'dataview'],
+			includeFolders: [],
+			excludeFolders: []
 		};
 
 		this.markdownSource = new MarkdownDataSource(app, this.eventBus, config);
@@ -140,7 +144,13 @@ export class TaskStore {
 	 * isInitializing 标志覆盖整个初始化周期（含重试等待），防止设置保存
 	 * 等外部调用在重试窗口内并发触发第二次全量扫描。
 	 */
-	async initialize(globalTaskFilter: string, enabledFormats?: string[], retryCount: number = 0): Promise<void> {
+	async initialize(
+		globalTaskFilter: string,
+		enabledFormats?: string[],
+		includeFolders?: string[],
+		excludeFolders?: string[],
+		retryCount: number = 0
+	): Promise<void> {
 		if (this.isInitializing) {
 			Logger.debug('TaskStore', 'Already initializing, skipping...');
 			// 并发调用者等待同一个门闩，而非直接返回——
@@ -149,7 +159,7 @@ export class TaskStore {
 		}
 		this.isInitializing = true;
 		try {
-			await this.initializeInternal(globalTaskFilter, enabledFormats, retryCount);
+			await this.initializeInternal(globalTaskFilter, enabledFormats, includeFolders, excludeFolders, retryCount);
 		} finally {
 			this.isInitializing = false;
 		}
@@ -159,23 +169,38 @@ export class TaskStore {
 	 * 实际初始化流程（含 vault 未就绪重试）。仅由 initialize() 调用，
 	 * 重试走内部递归，不经过外层的并发防护。
 	 */
-	private async initializeInternal(globalTaskFilter: string, enabledFormats?: string[], retryCount: number = 0): Promise<void> {
+	private async initializeInternal(
+		globalTaskFilter: string,
+		enabledFormats?: string[],
+		includeFolders?: string[],
+		excludeFolders?: string[],
+		retryCount: number = 0
+	): Promise<void> {
 		Logger.debug('TaskStore', '===== Starting initialization =====');
 		Logger.debug('TaskStore', 'Config:', {
 			globalTaskFilter,
 			enabledFormats,
+			includeFolders,
+			excludeFolders,
 			retryCount
 		});
 
 		const newFilter = (globalTaskFilter || '').trim();
 		const newFormats = (enabledFormats || ['tasks', 'dataview']).join(',');
+		const newIncludes = (includeFolders || []).join('|');
+		const newExcludes = (excludeFolders || []).join('|');
 		// 配置未变时保留仓库缓存：数据源会按 mtime 跳过未变更文件，
 		// 其任务已在仓库中；清空反而强制全量重扫
 		const configChanged =
-			this.globalTaskFilter !== newFilter || this.enabledFormats.join(',') !== newFormats;
+			this.globalTaskFilter !== newFilter ||
+			this.enabledFormats.join(',') !== newFormats ||
+			this.includeFolders.join('|') !== newIncludes ||
+			this.excludeFolders.join('|') !== newExcludes;
 
 		this.globalTaskFilter = newFilter;
 		this.enabledFormats = enabledFormats || ['tasks', 'dataview'];
+		this.includeFolders = includeFolders || [];
+		this.excludeFolders = excludeFolders || [];
 
 		if (configChanged || !this.isInitialized) {
 			this.repository.clear();
@@ -188,7 +213,9 @@ export class TaskStore {
 			autoSync: true,
 			conflictResolution: 'local-win',
 			globalFilter: this.globalTaskFilter,
-			enabledFormats: this.enabledFormats
+			enabledFormats: this.enabledFormats,
+			includeFolders: this.includeFolders,
+			excludeFolders: this.excludeFolders
 		};
 
 		const markdownFiles = this.app.vault.getMarkdownFiles();
@@ -199,7 +226,7 @@ export class TaskStore {
 			await new Promise(resolve => window.setTimeout(resolve, 500));
 			// 重试保持内部递归：外层 initialize 的 isInitializing 标志持续生效，
 			// 期间任何并发 initialize() 都会被防护挡下
-			return this.initializeInternal(globalTaskFilter, enabledFormats, retryCount + 1);
+			return this.initializeInternal(globalTaskFilter, enabledFormats, includeFolders, excludeFolders, retryCount + 1);
 		}
 
 		const scanStartTime = performance.now();
@@ -256,15 +283,22 @@ export class TaskStore {
 	/**
 	 * 更新配置并重新初始化
 	 */
-	async updateSettings(globalTaskFilter: string, enabledFormats?: string[]): Promise<void> {
+	async updateSettings(
+		globalTaskFilter: string,
+		enabledFormats?: string[],
+		includeFolders?: string[],
+		excludeFolders?: string[]
+	): Promise<void> {
 		const trimmedFilter = (globalTaskFilter || '').trim();
 		const needsReinit =
 			this.globalTaskFilter !== trimmedFilter ||
-			JSON.stringify(this.enabledFormats) !== JSON.stringify(enabledFormats);
+			JSON.stringify(this.enabledFormats) !== JSON.stringify(enabledFormats || ['tasks', 'dataview']) ||
+			JSON.stringify(this.includeFolders) !== JSON.stringify(includeFolders || []) ||
+			JSON.stringify(this.excludeFolders) !== JSON.stringify(excludeFolders || []);
 
 		if (needsReinit) {
 			Logger.debug('TaskStore', 'Settings changed, reinitializing...');
-			await this.initialize(trimmedFilter, enabledFormats);
+			await this.initialize(trimmedFilter, enabledFormats, includeFolders, excludeFolders);
 		}
 	}
 

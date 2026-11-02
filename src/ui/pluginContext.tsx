@@ -9,7 +9,7 @@ export const PluginContext = createContext<IPluginContext | null>(null);
 export function usePlugin(): IPluginContext {
 	const ctx = useContext(PluginContext);
 	if (!ctx) {
-		throw new Error('usePlugin 必须在 PluginProvider 内使用');
+		throw new Error('usePlugin must be used within PluginProvider');
 	}
 	return ctx;
 }

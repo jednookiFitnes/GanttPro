@@ -1,6 +1,6 @@
 import { Setting } from 'obsidian';
 import { BaseBuilder } from './BaseBuilder';
-import { FolderSuggest } from '../components';
+import { FolderSuggest, FolderListSetting } from '../components';
 import type { BuilderConfig } from '../types';
 import { i18n } from '../../i18n/i18n';
 
@@ -67,6 +67,42 @@ export class TaskSettingsBuilder extends BaseBuilder {
 							this.plugin.settings.showGlobalFilterInTaskText = value;
 							void this.saveAndRefreshViews();
 						}));
+			});
+
+			// 包含的任务文件夹（Pokazuj taski z wybranych folderów）
+			addSetting(setting => {
+				new FolderListSetting({
+					setting,
+					app: this.plugin.app,
+					name: i18n.t('settings.tasks.basic.includeFolders.name'),
+					description: i18n.t('settings.tasks.basic.includeFolders.description'),
+					placeholder: i18n.t('settings.tasks.basic.includeFolders.placeholder'),
+					emptyHint: i18n.t('settings.tasks.basic.includeFolders.empty'),
+					addButtonText: i18n.t('settings.tasks.basic.includeFolders.add'),
+					folders: this.plugin.settings.includeTaskFolders || [],
+					onChange: async (folders) => {
+						this.plugin.settings.includeTaskFolders = folders;
+						await this.saveAndRefreshViews();
+					},
+				});
+			});
+
+			// 忽略的任务文件夹（Ignoruj taski z wybranych folderów）
+			addSetting(setting => {
+				new FolderListSetting({
+					setting,
+					app: this.plugin.app,
+					name: i18n.t('settings.tasks.basic.excludeFolders.name'),
+					description: i18n.t('settings.tasks.basic.excludeFolders.description'),
+					placeholder: i18n.t('settings.tasks.basic.excludeFolders.placeholder'),
+					emptyHint: i18n.t('settings.tasks.basic.excludeFolders.empty'),
+					addButtonText: i18n.t('settings.tasks.basic.excludeFolders.add'),
+					folders: this.plugin.settings.excludeTaskFolders || [],
+					onChange: async (folders) => {
+						this.plugin.settings.excludeTaskFolders = folders;
+						await this.saveAndRefreshViews();
+					},
+				});
 			});
 
 			// 任务笔记文件夹路径

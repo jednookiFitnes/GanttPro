@@ -41,7 +41,7 @@ function updateTaskBarVisual(
 	const rowIndex = Math.max(0, ctx.tasks.findIndex(t => t.id === dragState.task?.id));
 
 	const x = getGridUnitX(startUnitIndex, ctx.columnWidth);
-	const y = rowIndex * ctx.rowHeight + (ctx.rowHeight - 24) / 2;
+	const y = parseFloat(dragState.barElement?.getAttribute('y') || String(rowIndex * ctx.rowHeight + (ctx.rowHeight - 24) / 2));
 	const duration = endUnitIndex - startUnitIndex;
 	const barWidth = Math.max(duration * ctx.columnWidth, 20);
 
@@ -51,6 +51,19 @@ function updateTaskBarVisual(
 		barEl.setAttribute('x', String(x));
 		barEl.setAttribute('y', String(y));
 		barEl.setAttribute('width', String(barWidth));
+	}
+	const barGroup = barEl?.parentElement as SVGGElement | null;
+	const barForeign = barGroup?.querySelector('.task-bar-foreign') as SVGForeignObjectElement | null;
+	if (barForeign && barForeign !== barEl) {
+		barForeign.setAttribute('x', String(x));
+		barForeign.setAttribute('y', String(y));
+		barForeign.setAttribute('width', String(barWidth));
+	}
+	const barRect = barGroup?.querySelector('.task-bar') as SVGRectElement | null;
+	if (barRect && barRect !== barEl) {
+		barRect.setAttribute('x', String(x));
+		barRect.setAttribute('y', String(y));
+		barRect.setAttribute('width', String(barWidth));
 	}
 
 	// 更新左手柄
@@ -75,7 +88,6 @@ function updateTaskBarVisual(
 	}
 
 	// 同步更新引导条（创建 → 开始）
-	const barGroup = barEl?.parentElement as SVGGElement | null;
 	if (barGroup) {
 		const leadBar = barGroup.querySelector('.gc-gantt-view__lead-bar');
 		if (leadBar) {
@@ -127,8 +139,8 @@ export function createTaskDragController(
 	onDateChange?: (task: GanttChartTask, start: Date, end: Date) => void | Promise<void>,
 	onTaskClick?: (task: GanttChartTask) => void,
 ): {
-	setupTaskBarDragging: (barGroup: SVGGElement, bar: SVGRectElement, leftHandle: SVGRectElement, rightHandle: SVGRectElement, task: GanttChartTask, minDate: Date) => void;
-	startDragging: (task: GanttChartTask, dragType: 'move' | 'resize-left' | 'resize-right', startX: number, minDate: Date, bar: SVGRectElement, leftHandle: SVGRectElement | null, rightHandle: SVGRectElement | null) => void;
+	setupTaskBarDragging: (barGroup: SVGGElement, bar: SVGElement, leftHandle: SVGRectElement, rightHandle: SVGRectElement, task: GanttChartTask, minDate: Date) => void;
+	startDragging: (task: GanttChartTask, dragType: 'move' | 'resize-left' | 'resize-right', startX: number, minDate: Date, bar: SVGElement, leftHandle: SVGRectElement | null, rightHandle: SVGRectElement | null) => void;
 	handleDragMove: (e: PointerEvent) => void;
 	handleDragEnd: (e: PointerEvent) => void;
 	addDays: (date: Date, days: number) => Date;
@@ -138,7 +150,7 @@ export function createTaskDragController(
 
 	function setupTaskBarDragging(
 		barGroup: SVGGElement,
-		bar: SVGRectElement,
+		bar: SVGElement,
 		leftHandle: SVGRectElement,
 		rightHandle: SVGRectElement,
 		task: GanttChartTask,
@@ -147,18 +159,23 @@ export function createTaskDragController(
 		// 触屏：拖动元素禁止浏览器手势接管，pointer 拖动才能生效
 		setCssProps(barGroup as unknown as HTMLElement, { touchAction: 'none' });
 		leftHandle.addEventListener('pointerdown', (e: PointerEvent) => {
+			if (e.button !== 0) return;
 			e.preventDefault();
 			e.stopPropagation();
 			startDragging(task, 'resize-left', e.clientX, minDate, bar, leftHandle, null);
 		});
 
 		rightHandle.addEventListener('pointerdown', (e: PointerEvent) => {
+			if (e.button !== 0) return;
 			e.preventDefault();
 			e.stopPropagation();
 			startDragging(task, 'resize-right', e.clientX, minDate, bar, null, rightHandle);
 		});
 
+		// 仅在触屏手势下使用 pointerdown 拖动；桌面鼠标使用 HTML5 Drag & Drop（支持跨面板拖放到 Daily Timeline）
 		bar.addEventListener('pointerdown', (e: PointerEvent) => {
+			if (e.pointerType !== 'touch') return;
+			if (e.button !== 0) return;
 			e.preventDefault();
 			startDragging(task, 'move', e.clientX, minDate, bar, null, null);
 		});
@@ -169,7 +186,7 @@ export function createTaskDragController(
 		dragType: 'move' | 'resize-left' | 'resize-right',
 		startX: number,
 		minDate: Date,
-		bar: SVGRectElement,
+		bar: SVGElement,
 		leftHandle: SVGRectElement | null,
 		rightHandle: SVGRectElement | null
 	): void {
@@ -249,17 +266,15 @@ export function createTaskDragController(
 			case 'resize-left':
 				newStart = addDays(originalStart!, daysDelta);
 				newEnd = originalEnd!;
-				if (newStart >= newEnd) {
+				if (newStart > newEnd) {
 					newStart = new Date(newEnd);
-					newStart.setDate(newStart.getDate() - 1);
 				}
 				break;
 			case 'resize-right':
 				newStart = originalStart!;
 				newEnd = addDays(originalEnd!, daysDelta);
-				if (newEnd <= newStart) {
+				if (newEnd < newStart) {
 					newEnd = new Date(newStart);
-					newEnd.setDate(newEnd.getDate() + 1);
 				}
 				break;
 			default:
@@ -284,7 +299,7 @@ export function createTaskDragController(
 			state.justFinishedDragging = true;
 			const dragState = state;
 			window.setTimeout(() => { dragState.justFinishedDragging = false; }, 100);
-			if (task!) onTaskClick?.(task);
+			if (task! && e.button === 0) onTaskClick?.(task);
 			return;
 		}
 
@@ -311,17 +326,15 @@ export function createTaskDragController(
 			case 'resize-left':
 				newStart = addDays(os, daysDelta);
 				newEnd = oe;
-				if (newStart >= newEnd) {
+				if (newStart > newEnd) {
 					newStart = new Date(oe);
-					newStart.setDate(newStart.getDate() - 1);
 				}
 				break;
 			case 'resize-right':
 				newStart = os;
 				newEnd = addDays(oe, daysDelta);
-				if (newEnd <= os) {
+				if (newEnd < os) {
 					newEnd = new Date(os);
-					newEnd.setDate(newEnd.getDate() + 1);
 				}
 				break;
 			default:

@@ -18,8 +18,9 @@ import { parseLocalDate, findStartGridUnitIndex as findStartIdx, findEndGridUnit
 import { createTaskDragController } from './taskDragController';
 import { renderHeader } from './headerRenderer';
 import { renderCorner } from './cornerRenderer';
-import { renderGrid, renderTodayLine } from './gridRenderer';
-import type { IPluginContext,  GCTask } from '../../types';
+import { renderGrid, renderTodayLine, renderGroupSummaryBracket } from './gridRenderer';
+import { groupGanttTasks, getPriorityInfo, getPriorityBarColor, type GanttGroupMode, type GanttDisplayRow } from '../../tasks/taskGrouper';
+import { type IPluginContext, type GCTask, getTaskDateField } from '../../types';
 import { GanttClasses, setCssProps } from '../../utils/bem';
 import { TooltipManager, type MousePosition } from '../../utils/tooltipManager';
 import { isTouchNow } from '../../ui/utils/platform';
@@ -29,6 +30,7 @@ import { getTodayInTimezone } from '../../dateUtils/timezone';
 import { formatDate } from '../../dateUtils/dateUtilsIndex';
 import { openFileInExistingLeaf } from '../../utils/fileOpener';
 import { App } from 'obsidian';
+import { setBlockDragMeta, clearBlockDragMeta } from '../../ui/views/week/useBlockResize';
 
 /**
  * SVG 元素辅助方法
@@ -64,13 +66,18 @@ export class SvgGanttRenderer {
 	private granularity: TimeGranularity = TimeGranularity.DAY;
 
 	// 尺寸相关
-	private headerHeight = 50;
+	private headerHeight = 76;
 	private rowHeight = 40;
 	private columnWidth = 50;
 	private taskNumberColumnWidth = 40;  // 任务序号列宽度
-	private taskColumnWidth = 240;  // 任务列宽度（包含序号列）
+	private taskColumnWidth = 260;  // 任务列宽度（包含序号列）
 	private resizerWidth = 4;  // 分隔条宽度
 	private padding = 18;
+
+	// Grupowanie zadań (Gantt Calendar Pro)
+	private groupMode: GanttGroupMode = 'folder';
+	private collapsedGroups: Set<string> = new Set<string>();
+	private displayRows: GanttDisplayRow[] = [];
 
 	// 日期范围（用于滚动到今天）
 	private minDate: Date | null = null;
@@ -116,20 +123,50 @@ export class SvgGanttRenderer {
 		this.container = container;
 		this.config = config;
 		this.plugin = plugin;
-		// _originalTasks 参数保留以保持向后兼容，但不再使用（GanttChartTask 已包含所有必要信息）
+		this.originalTasks = _originalTasks || [];
 		this.app = app ?? plugin?.app ?? null;
 		this.startField = startField;
 		this.endField = endField;
 
-		// 从配置读取尺寸
-		this.headerHeight = config.header_height ?? 50;
+		// 从配置读取尺寸与分组模式
+		this.headerHeight = config.header_height ?? 76;
 		this.columnWidth = config.column_width ?? 50;
-		this.taskNumberColumnWidth = 40;  // 固定序号列宽度
-		this.taskColumnWidth = this.taskNumberColumnWidth + 200;  // 序号列 + 任务内容列
+		this.groupMode = config.group_by ?? 'folder';
+		this.taskNumberColumnWidth = 36;  // 固定序号列宽度
+		this.taskColumnWidth = 320;       // Łączna szerokość kolumny zadań (numer 36px + treść + priorytet 80px)
 		this.padding = config.padding ?? 18;
 
 		// 初始化时间颗粒度
 		this.granularity = config.granularity ?? TimeGranularity.DAY;
+	}
+
+	/**
+	 * Aktualizuje zbiór oryginalnych zadań (używany m.in. przy drop z sidebara)
+	 */
+	setOriginalTasks(tasks: GCTask[]): void {
+		this.originalTasks = tasks;
+	}
+
+	/**
+	 * Przełącza zwinięcie/rozwinięcie danej grupy zadań
+	 */
+	toggleGroupCollapse(groupId: string): void {
+		if (this.collapsedGroups.has(groupId)) {
+			this.collapsedGroups.delete(groupId);
+		} else {
+			this.collapsedGroups.add(groupId);
+		}
+		this.render();
+	}
+
+	/**
+	 * Zmienia tryb grupowania
+	 */
+	setGroupMode(mode: GanttGroupMode): void {
+		if (this.groupMode === mode) return;
+		this.groupMode = mode;
+		this.collapsedGroups.clear();
+		this.render();
 	}
 
 	/**
@@ -170,6 +207,10 @@ export class SvgGanttRenderer {
 		if (config.padding !== undefined) {
 			this.padding = config.padding;
 		}
+		if (config.group_by !== undefined && config.group_by !== this.groupMode) {
+			this.groupMode = config.group_by;
+			this.collapsedGroups.clear();
+		}
 
 		// 重新渲染
 		this.render();
@@ -182,6 +223,12 @@ export class SvgGanttRenderer {
 	updateTasks(newTasks: GanttChartTask[]): void {
 		const oldTasks = this.tasks;
 		this.tasks = newTasks;
+
+		// Gdy aktywne jest grupowanie, wykonaj pełny render
+		if (this.groupMode !== 'none') {
+			this.render();
+			return;
+		}
 
 		// 构建任务ID映射
 		const oldTaskMap = new Map(oldTasks.map(t => [t.id, t]));
@@ -199,8 +246,8 @@ export class SvgGanttRenderer {
 		// 增量路径复用旧 minDate 会把条画到负坐标/画布之外——升级为全量渲染
 		const outOfRange = modified.some(t => this.isTaskOutsideRenderedRange(t));
 
-		// 如果变化太大，执行完整渲染
-		if (added.length + removed.length > 5 || outOfRange) {
+		// Jeśli dodano lub usunięto zadanie, lub data wykracza poza zakres - pełny render z zachowaniem pozycji
+		if (added.length > 0 || removed.length > 0 || outOfRange) {
 			this.render();
 			return;
 		}
@@ -220,6 +267,7 @@ export class SvgGanttRenderer {
 			   old.progress !== current.progress ||
 			   old.completed !== current.completed ||
 			   old.name !== current.name ||
+			   old.priority !== current.priority ||
 			   old.custom_class !== current.custom_class;
 	}
 
@@ -261,9 +309,10 @@ export class SvgGanttRenderer {
 			this.taskDragState.isDragging = false;
 		}
 		// Preserve scroll across full re-renders (config change / bulk task change).
-		// First render starts at 0 and GanttView then explicitly scrolls to today.
 		const savedScrollLeft = this.ganttContainer?.scrollLeft ?? 0;
 		const savedScrollTop = this.ganttContainer?.scrollTop ?? 0;
+		const oldMinDate = this.minDate;
+		const isInitialRender = !oldMinDate && savedScrollLeft === 0;
 
 		// 清空容器
 		this.container.empty();
@@ -275,17 +324,23 @@ export class SvgGanttRenderer {
 		this.minDate = minDate;
 		this.totalUnits = totalUnits;
 
+		// Przygotuj wiersze do wyświetlenia wg trybu grupowania (Gantt Calendar Pro)
+		this.displayRows = groupGanttTasks(this.tasks, this.groupMode, this.collapsedGroups);
+
 		// 计算尺寸
+		const totalRows = this.displayRows.length;
 		const ganttWidth = totalUnits * this.columnWidth + this.padding * 2;
-		const ganttHeight = this.headerHeight + this.tasks.length * this.rowHeight;
-		const taskListHeight = ganttHeight;
+		const rowsHeight = totalRows * this.rowHeight;
 
 		// 创建单个 Grid 容器
 		this.mainGrid = this.container.createDiv(GanttClasses.elements.mainGrid);
-		// 设置 CSS 变量用于控制任务列宽度
-		setCssProps(this.mainGrid, { '--task-column-width': `${this.taskColumnWidth}px` });
+		// 设置 CSS 变量用于控制任务列宽度与表头高度
+		setCssProps(this.mainGrid, {
+			'--task-column-width': `${this.taskColumnWidth}px`,
+			'--gantt-header-height': `${this.headerHeight}px`,
+		});
 
-		// 1. 左上角空白区域
+		// 1. 左上角空白区域 (Corner: taskColumnWidth x headerHeight)
 		this.cornerContainer = this.mainGrid.createDiv(GanttClasses.elements.corner);
 		this.cornerSvg = this.createSvgElement(
 			this.cornerContainer,
@@ -307,12 +362,10 @@ export class SvgGanttRenderer {
 
 		// 3. 左侧任务列表容器（冻结窗格，不随甘特图横向滚动）
 		this.taskListContainer = this.mainGrid.createDiv(GanttClasses.elements.tasklist);
-		// 使用容器实际宽度（受 grid 约束）作为 SVG 宽度
-		const actualTaskListWidth = this.taskListContainer.offsetWidth || this.taskColumnWidth;
 		this.taskListSvg = this.createSvgElement(
 			this.taskListContainer,
-			actualTaskListWidth,
-			taskListHeight,
+			this.taskColumnWidth,
+			rowsHeight,
 			GanttClasses.elements.tasklistSvg
 		);
 		this.renderTaskList(this.taskListSvg);
@@ -322,7 +375,7 @@ export class SvgGanttRenderer {
 		this.ganttSvg = this.createSvgElement(
 			this.ganttContainer,
 			ganttWidth,
-			ganttHeight,  // 使用完整高度以保持y坐标系统一致
+			rowsHeight,
 			GanttClasses.elements.chartSvg
 		);
 		// 初始化拖拽控制器（必须在 renderGanttChart 之前）
@@ -333,7 +386,7 @@ export class SvgGanttRenderer {
 			(task: GanttChartTask) => this.handleTaskClick(task),
 		);
 
-		this.renderGanttChart(this.ganttSvg, minDate, totalUnits, ganttHeight, granularity);
+		this.renderGanttChart(this.ganttSvg, minDate, totalUnits, rowsHeight, granularity);
 
 		// 5. 创建分隔条（覆盖在 Grid 上）
 		this.resizer = this.mainGrid.createDiv(GanttClasses.elements.resizer);
@@ -342,10 +395,29 @@ export class SvgGanttRenderer {
 		this.setupRowHighlight();
 		this.setupDropReceiver();
 
-		if (this.ganttContainer) {
-			this.ganttContainer.scrollLeft = savedScrollLeft;
-			this.ganttContainer.scrollTop = savedScrollTop;
+		// Zachowaj stabilne położenie scrolla, kompensując przesunięcie minDate w siatce
+		let targetScrollLeft = savedScrollLeft;
+		if (!isInitialRender && oldMinDate && minDate && this.columnWidth) {
+			const diffDays = Math.round((minDate.getTime() - oldMinDate.getTime()) / 86400000);
+			targetScrollLeft = Math.max(0, savedScrollLeft - diffDays * this.columnWidth);
 		}
+
+		const restoreScroll = () => {
+			if (!this.ganttContainer) return;
+
+			const scrollX = isInitialRender ? this.getTodayScrollLeft() : targetScrollLeft;
+
+			this.ganttContainer.scrollLeft = scrollX;
+			if (this.headerContainer) {
+				this.headerContainer.scrollLeft = scrollX;
+			}
+			if (this.taskListContainer) {
+				this.taskListContainer.scrollTop = savedScrollTop;
+			}
+			this.ganttContainer.scrollTop = savedScrollTop;
+		};
+		restoreScroll();
+		window.requestAnimationFrame(restoreScroll);
 	}
 
 	/**
@@ -359,8 +431,9 @@ export class SvgGanttRenderer {
 	} {
 		const config = GRANULARITY_CONFIGS[this.granularity];
 
+		const today = getTodayInTimezone();
+
 		if (this.tasks.length === 0) {
-			const today = getTodayInTimezone();
 			const defaultUnits = 30; // 默认30个单元
 			return {
 				minDate: today,
@@ -370,11 +443,14 @@ export class SvgGanttRenderer {
 			};
 		}
 
-		const dates = this.tasks.flatMap(t => [
-			SvgGanttRenderer.parseLocalDate(t.start),
-			SvgGanttRenderer.parseLocalDate(t.end),
-			...(t.leadStart ? [SvgGanttRenderer.parseLocalDate(t.leadStart)] : [])
-		]);
+		const dates = [
+			today,
+			...this.tasks.flatMap(t => [
+				SvgGanttRenderer.parseLocalDate(t.start),
+				SvgGanttRenderer.parseLocalDate(t.end),
+				...(t.leadStart ? [SvgGanttRenderer.parseLocalDate(t.leadStart)] : [])
+			])
+		].filter(d => !isNaN(d.getTime()));
 
 		let minDate = new Date(Math.min(...dates.map(d => d.getTime())));
 		let maxDate = new Date(Math.max(...dates.map(d => d.getTime())));
@@ -390,6 +466,15 @@ export class SvgGanttRenderer {
 
 		// 添加边距（前2后2个单元）
 		const paddingUnits = 2;
+		if (!this.granularity || (this.granularity as string) === 'day' || this.granularity === TimeGranularity.DAY) {
+			minDate = new Date(minDate.getFullYear(), minDate.getMonth(), minDate.getDate() - paddingUnits);
+			maxDate = new Date(maxDate.getFullYear(), maxDate.getMonth(), maxDate.getDate() + paddingUnits);
+			const utcMin = Date.UTC(minDate.getFullYear(), minDate.getMonth(), minDate.getDate());
+			const utcMax = Date.UTC(maxDate.getFullYear(), maxDate.getMonth(), maxDate.getDate());
+			const totalUnits = Math.round((utcMax - utcMin) / 86400000);
+			return { minDate, maxDate, totalUnits, granularity: this.granularity };
+		}
+
 		minDate = new Date(minDate.getTime() - paddingUnits * config.milliseconds);
 		maxDate = new Date(maxDate.getTime() + paddingUnits * config.milliseconds);
 
@@ -436,45 +521,29 @@ export class SvgGanttRenderer {
 		const taskListContainer = this.taskListContainer;
 		const ganttContainer = this.ganttContainer;
 
-		// 使用标志位防止循环触发
-		let isSyncing = false;
-
 		// chart 容器滚动 → 同步到 header 和 tasklist
 		ganttContainer.addEventListener('scroll', () => {
-			if (isSyncing) return;
-			isSyncing = true;
-
-			headerContainer.scrollLeft = ganttContainer.scrollLeft;
-			taskListContainer.scrollTop = ganttContainer.scrollTop;
-
-			window.requestAnimationFrame(() => {
-				isSyncing = false;
-			});
-		});
+			if (Math.abs(headerContainer.scrollLeft - ganttContainer.scrollLeft) >= 1) {
+				headerContainer.scrollLeft = ganttContainer.scrollLeft;
+			}
+			if (Math.abs(taskListContainer.scrollTop - ganttContainer.scrollTop) >= 1) {
+				taskListContainer.scrollTop = ganttContainer.scrollTop;
+			}
+		}, { passive: true });
 
 		// header 容器滚动 → 同步到 chart
 		headerContainer.addEventListener('scroll', () => {
-			if (isSyncing) return;
-			isSyncing = true;
-
-			ganttContainer.scrollLeft = headerContainer.scrollLeft;
-
-			window.requestAnimationFrame(() => {
-				isSyncing = false;
-			});
-		});
+			if (Math.abs(ganttContainer.scrollLeft - headerContainer.scrollLeft) >= 1) {
+				ganttContainer.scrollLeft = headerContainer.scrollLeft;
+			}
+		}, { passive: true });
 
 		// tasklist 容器滚动 → 同步到 chart
 		taskListContainer.addEventListener('scroll', () => {
-			if (isSyncing) return;
-			isSyncing = true;
-
-			ganttContainer.scrollTop = taskListContainer.scrollTop;
-
-			window.requestAnimationFrame(() => {
-				isSyncing = false;
-			});
-		});
+			if (Math.abs(ganttContainer.scrollTop - taskListContainer.scrollTop) >= 1) {
+				ganttContainer.scrollTop = taskListContainer.scrollTop;
+			}
+		}, { passive: true });
 	}
 
 	/**
@@ -498,59 +567,44 @@ export class SvgGanttRenderer {
 			e.preventDefault();
 		});
 
+		let resizeRaf: number | null = null;
+
 		// 鼠标移动调整宽度
 		this.resizeMoveHandler = (e) => {
 			if (!this.isResizing || !mainGrid) return;
 
 			const layoutRect = mainGrid.getBoundingClientRect();
-			const newWidth = e.clientX - layoutRect.left;
+			const newWidth = Math.round(e.clientX - layoutRect.left);
 
 			// 限制最小和最大宽度
-			const minWidth = 100;
+			const minWidth = 120;
 			const maxWidth = layoutRect.width - this.resizerWidth - 200;
 
 			if (newWidth >= minWidth && newWidth <= maxWidth) {
 				this.taskColumnWidth = newWidth;
-
-				// 更新 CSS 变量，Grid 中所有区域都会同步变化
 				setCssProps(mainGrid, { '--task-column-width': `${newWidth}px` });
 
-				// 更新 corner SVG 元素
-				if (this.cornerSvg) {
-					this.cornerSvg.setAttribute('width', String(newWidth));
-					const viewBox = this.cornerSvg.getAttribute('viewBox')?.split(' ');
-					if (viewBox && viewBox.length === 4) {
-						viewBox[2] = String(newWidth);
-						this.cornerSvg.setAttribute('viewBox', viewBox.join(' '));
-					}
-					// 更新内部 rect 宽度和分隔线位置
-					const bgRect = this.cornerSvg.querySelector('rect');
-					if (bgRect) {
-						bgRect.setAttribute('width', String(newWidth));
-					}
-					// 更新标题位置和分隔线
-					const texts = this.cornerSvg.querySelectorAll('text');
-					if (texts.length >= 2) {
-						// 任务列标题
-						texts[1].setAttribute('x', String(this.taskNumberColumnWidth + (newWidth - this.taskNumberColumnWidth) / 2));
-					}
-					const dividerLine = this.cornerSvg.querySelector('line[stroke-width="1"]');
-					if (dividerLine) {
-						dividerLine.setAttribute('x1', String(this.taskNumberColumnWidth));
-						dividerLine.setAttribute('x2', String(this.taskNumberColumnWidth));
-					}
-				}
+				if (resizeRaf === null) {
+					resizeRaf = window.requestAnimationFrame(() => {
+						resizeRaf = null;
+						const rowsHeight = this.displayRows.length * this.rowHeight;
 
-				// tasklist SVG 宽度随拖动同步更新（被 grid 容器裁剪）。
-				// viewBox 必须与 width 同步：只改 width 会让 SVG 内容按比例缩放，
-				// 序号列（x=0~40）会跟着拉伸/移动，与 corner 表头错位
-				if (this.taskListSvg) {
-					this.taskListSvg.setAttribute('width', String(newWidth));
-					const taskListViewBox = this.taskListSvg.getAttribute('viewBox')?.split(' ');
-					if (taskListViewBox && taskListViewBox.length === 4) {
-						taskListViewBox[2] = String(newWidth);
-						this.taskListSvg.setAttribute('viewBox', taskListViewBox.join(' '));
-					}
+						// Aktualizuj narożnik (nagłówki ZADANIE i PRIORYTET dopasowują się idealnie)
+						if (this.cornerSvg) {
+							this.cornerSvg.setAttribute('width', String(this.taskColumnWidth));
+							this.cornerSvg.setAttribute('height', String(this.headerHeight));
+							this.cornerSvg.setAttribute('viewBox', `0 0 ${this.taskColumnWidth} ${this.headerHeight}`);
+							this.renderCorner(this.cornerSvg);
+						}
+
+						// Aktualizuj listę zadań (zarówno height jak i viewBox = rowsHeight, brak zniekształceń!)
+						if (this.taskListSvg) {
+							this.taskListSvg.setAttribute('width', String(this.taskColumnWidth));
+							this.taskListSvg.setAttribute('height', String(rowsHeight));
+							this.taskListSvg.setAttribute('viewBox', `0 0 ${this.taskColumnWidth} ${rowsHeight}`);
+							this.renderTaskList(this.taskListSvg);
+						}
+					});
 				}
 			}
 		};
@@ -560,6 +614,26 @@ export class SvgGanttRenderer {
 			if (this.isResizing) {
 				this.isResizing = false;
 				setCssProps(activeDocument.body, { cursor: '', userSelect: '' });
+				if (resizeRaf !== null) {
+					window.cancelAnimationFrame(resizeRaf);
+					resizeRaf = null;
+				}
+
+				const rowsHeight = this.displayRows.length * this.rowHeight;
+
+				if (this.cornerSvg) {
+					this.cornerSvg.setAttribute('width', String(this.taskColumnWidth));
+					this.cornerSvg.setAttribute('height', String(this.headerHeight));
+					this.cornerSvg.setAttribute('viewBox', `0 0 ${this.taskColumnWidth} ${this.headerHeight}`);
+					this.renderCorner(this.cornerSvg);
+				}
+
+				if (this.taskListSvg) {
+					this.taskListSvg.setAttribute('width', String(this.taskColumnWidth));
+					this.taskListSvg.setAttribute('height', String(rowsHeight));
+					this.taskListSvg.setAttribute('viewBox', `0 0 ${this.taskColumnWidth} ${rowsHeight}`);
+					this.renderTaskList(this.taskListSvg);
+				}
 			}
 		};
 
@@ -589,7 +663,7 @@ export class SvgGanttRenderer {
 		// 更新行高亮的辅助方法
 		const updateHighlight = (rowIndex: number) => {
 			// 如果行索引超出范围或没有变化，直接返回
-			if (rowIndex < 0 || rowIndex >= this.tasks.length || rowIndex === this.currentHighlightRow) {
+			if (rowIndex < 0 || rowIndex >= this.displayRows.length || rowIndex === this.currentHighlightRow) {
 				return;
 			}
 
@@ -712,23 +786,26 @@ export class SvgGanttRenderer {
 	private setupDropReceiver(): void {
 		if (!this.ganttContainer) return;
 
-		const container = this.ganttContainer;
+		const targets = [this.ganttContainer, this.headerContainer].filter((el): el is HTMLElement => el !== null);
 
-		container.addEventListener('dragover', (e: DragEvent) => {
+		const handleDragOver = (e: DragEvent) => {
 			e.preventDefault();
 			if (e.dataTransfer) {
 				e.dataTransfer.dropEffect = 'move';
 			}
-			container.addClass(GanttClasses.modifiers.chartDropTarget);
-		});
+			this.ganttContainer?.addClass(GanttClasses.modifiers.chartDropTarget);
+		};
 
-		container.addEventListener('dragleave', () => {
-			container.removeClass(GanttClasses.modifiers.chartDropTarget);
-		});
+		const handleDragLeave = (e: DragEvent) => {
+			const currentTarget = e.currentTarget as HTMLElement | null;
+			const related = e.relatedTarget as HTMLElement | null;
+			if (currentTarget && related && currentTarget.contains(related)) return;
+			this.ganttContainer?.removeClass(GanttClasses.modifiers.chartDropTarget);
+		};
 
-		container.addEventListener('drop', (e: DragEvent) => {
+		const handleDrop = (e: DragEvent) => {
 			e.preventDefault();
-			container.removeClass(GanttClasses.modifiers.chartDropTarget);
+			this.ganttContainer?.removeClass(GanttClasses.modifiers.chartDropTarget);
 
 			if (!e.dataTransfer) return;
 			const taskId = e.dataTransfer.getData('taskId');
@@ -740,31 +817,94 @@ export class SvgGanttRenderer {
 			const filePath = taskId.substring(0, colonIndex);
 			const lineNumber = parseInt(taskId.substring(colonIndex + 1), 10);
 
-			// 在甘特图任务列表中找到匹配的任务
-			const ganttTask = this.tasks.find(t =>
+			// 1. 在已渲染的甘特图任务列表中查找
+			let ganttTask = this.tasks.find(t =>
 				t.filePath === filePath && t.lineNumber === lineNumber
 			);
 
-			if (!ganttTask || !this.onDateChange || !this.minDate) return;
+			let sourceTask: GCTask | undefined;
+			if (!ganttTask) {
+				// 2. 在原始任务全集或 taskCache 中查找（从侧边栏拖入的任务尚未包含起止日期）
+				sourceTask = this.originalTasks?.find(t =>
+					t.filePath === filePath && t.lineNumber === lineNumber
+				) || this.plugin?.taskCache?.getAllTasks()?.find(t =>
+					t.filePath === filePath && t.lineNumber === lineNumber
+				);
 
-			// 根据 drop 的 x 坐标计算目标日期
+				if (!sourceTask) {
+					Logger.error('SvgGanttRenderer', 'Dropped task not found:', taskId);
+					return;
+				}
+
+				ganttTask = {
+					id: `${sourceTask.filePath}:${sourceTask.lineNumber}`,
+					name: sourceTask.description || sourceTask.content,
+					start: '',
+					end: '',
+					progress: sourceTask.completed ? 100 : 0,
+					filePath: sourceTask.filePath,
+					fileName: sourceTask.fileName,
+					lineNumber: sourceTask.lineNumber,
+					content: sourceTask.content,
+					description: sourceTask.description,
+					tags: sourceTask.tags,
+					priority: sourceTask.priority,
+					format: sourceTask.format,
+					status: sourceTask.status,
+					completed: sourceTask.completed,
+					cancelled: sourceTask.cancelled,
+					createdDate: sourceTask.createdDate,
+					startDate: sourceTask.startDate,
+					dueDate: sourceTask.dueDate,
+					scheduledDate: sourceTask.scheduledDate,
+					cancelledDate: sourceTask.cancelledDate,
+					completionDate: sourceTask.completionDate,
+					datePrecision: sourceTask.datePrecision,
+					startSourceField: this.startField,
+				};
+			}
+
+			if (!this.onDateChange) return;
+
+			const minDate = this.minDate ?? getTodayInTimezone();
+
+			// 根据 drop 的 x 坐标计算目标日期（网格从 x=0 开始）
+			const container = this.ganttContainer!;
 			const rect = container.getBoundingClientRect();
 			const dropX = e.clientX - rect.left + container.scrollLeft;
-			const unitIndex = Math.max(0, Math.floor((dropX - this.padding) / this.columnWidth));
-			const targetDate = this.getDateForUnit(this.minDate, unitIndex, this.granularity);
+			const unitIndex = Math.max(0, Math.floor(dropX / this.columnWidth));
+			const clampedUnit = this.totalUnits > 0 ? Math.min(this.totalUnits - 1, unitIndex) : unitIndex;
+			const targetDate = this.getDateForUnit(minDate, clampedUnit, this.granularity);
 
-			// 保持任务原有持续天数
-			const originalStart = SvgGanttRenderer.parseLocalDate(ganttTask.start);
-			const originalEnd = SvgGanttRenderer.parseLocalDate(ganttTask.end);
-			const durationDays = Math.max(1, Math.round(
-				(originalEnd.getTime() - originalStart.getTime()) / 86400000
-			));
+			// Wyznaczenie długości zadania: jeśli miało już obie daty, zachowujemy interwał
+			let durationDays = 0;
+			if (sourceTask) {
+				const existingStart = getTaskDateField(sourceTask, this.startField);
+				const existingEnd = getTaskDateField(sourceTask, this.endField);
+				if (existingStart && existingEnd && !isNaN(existingStart.getTime()) && !isNaN(existingEnd.getTime())) {
+					durationDays = Math.max(0, Math.round((existingEnd.getTime() - existingStart.getTime()) / 86400000));
+				} else {
+					durationDays = 0;
+				}
+			} else if (ganttTask.start && ganttTask.end) {
+				const originalStart = SvgGanttRenderer.parseLocalDate(ganttTask.start);
+				const originalEnd = SvgGanttRenderer.parseLocalDate(ganttTask.end);
+				durationDays = Math.max(0, Math.round(
+					(originalEnd.getTime() - originalStart.getTime()) / 86400000
+				));
+			}
 
 			const newStart = targetDate;
 			const newEnd = new Date(targetDate.getTime() + durationDays * 86400000);
 
 			void this.onDateChange(ganttTask, newStart, newEnd);
-		});
+		};
+
+		for (const target of targets) {
+			target.addEventListener('dragover', handleDragOver);
+			target.addEventListener('dragleave', handleDragLeave);
+			target.addEventListener('drop', handleDrop);
+		}
 	}
 
 	/**
@@ -785,45 +925,197 @@ export class SvgGanttRenderer {
 	private renderTaskList(svg: SVGSVGElement | null): void {
 		if (!svg) return;
 
+		while (svg.firstChild) {
+			svg.removeChild(svg.firstChild);
+		}
+
 		const ns = 'http://www.w3.org/2000/svg';
+		const totalWidth = this.taskColumnWidth;
 		const numberWidth = this.taskNumberColumnWidth;
-		// 使用足够大的宽度来显示完整任务描述
-		const contentWidth = 2000;
+		const priorityWidth = 76;
+		const contentWidth = Math.max(120, totalWidth - numberWidth);
+		const rowsHeight = this.displayRows.length * this.rowHeight;
+
+		svg.setAttribute('width', String(totalWidth));
+		svg.setAttribute('height', String(rowsHeight));
+		svg.setAttribute('viewBox', `0 0 ${totalWidth} ${rowsHeight}`);
 
 		// 清空行背景元素数组
 		this.rowBgElements.taskList = [];
 
-		// 背景 - 只需要任务区域的高度
+		// Tło całego obszaru listy zadań
 		const bg = activeDocument.createElementNS(ns, 'rect');
 		bg.setAttribute('x', '0');
 		bg.setAttribute('y', '0');
-		bg.setAttribute('width', String(contentWidth + numberWidth));
-		bg.setAttribute('height', String(this.tasks.length * this.rowHeight));
+		bg.setAttribute('width', String(totalWidth));
+		bg.setAttribute('height', String(this.displayRows.length * this.rowHeight));
 		bg.setAttribute('fill', 'var(--background-primary)');
 		svg.appendChild(bg);
 
-		// 绘制任务名称
-		this.tasks.forEach((task, index) => {
+		// 绘制任务与分组行
+		let taskCounter = 1;
+		this.displayRows.forEach((row, index) => {
 			const y = index * this.rowHeight;
-			const taskNumber = index + 1;
 
-			// Row wrapper with stable data-task-row id: enables incremental
-			// add/remove/update of individual rows by task id.
+			if (row.type === 'group') {
+				const group = row.group;
+				const rowGroup = activeDocument.createElementNS(ns, 'g');
+				rowGroup.setAttribute('data-group-row', group.id);
+
+				// Tło wiersza grupy
+				const rowBg = activeDocument.createElementNS(ns, 'rect');
+				rowBg.setAttribute('x', '0');
+				rowBg.setAttribute('y', String(y));
+				rowBg.setAttribute('width', String(totalWidth));
+				rowBg.setAttribute('height', String(this.rowHeight));
+				rowBg.setAttribute('data-row-index', String(index));
+				addSvgClass(rowBg, GanttClasses.elements.rowBg);
+				rowBg.setAttribute('fill', 'var(--background-secondary)');
+				rowBg.setAttribute('opacity', '0.7');
+				rowBg.setAttribute('cursor', 'pointer');
+				rowBg.addEventListener('click', () => {
+					this.toggleGroupCollapse(group.id);
+				});
+				rowGroup.appendChild(rowBg);
+				this.rowBgElements.taskList.push(rowBg);
+
+				// Kolumna zwijania ▾ / ▸ (szerokość 36px)
+				const numberForeignObj = activeDocument.createElementNS(ns, 'foreignObject');
+				numberForeignObj.setAttribute('x', '0');
+				numberForeignObj.setAttribute('y', String(y));
+				numberForeignObj.setAttribute('width', String(numberWidth));
+				numberForeignObj.setAttribute('height', String(this.rowHeight));
+
+				const chevronDiv = createDiv();
+				chevronDiv.className = GanttClasses.elements.taskNumberCell;
+				chevronDiv.addClass('gc-u-flex', 'gc-u-items-center', 'gc-u-pointer');
+				setCssProps(chevronDiv, { justifyContent: 'center', height: '100%', fontSize: '13px', color: 'var(--text-muted)' });
+				chevronDiv.textContent = group.collapsed ? '▸' : '▾';
+				chevronDiv.addEventListener('click', (e) => {
+					e.stopPropagation();
+					this.toggleGroupCollapse(group.id);
+				});
+				numberForeignObj.appendChild(chevronDiv);
+				rowGroup.appendChild(numberForeignObj);
+
+				// Kolumna zawartości -> Tytuł grupy, ikona i licznik zadań
+				const contentForeignObj = activeDocument.createElementNS(ns, 'foreignObject');
+				contentForeignObj.setAttribute('x', String(numberWidth));
+				contentForeignObj.setAttribute('y', String(y));
+				contentForeignObj.setAttribute('width', String(contentWidth));
+				contentForeignObj.setAttribute('height', String(this.rowHeight));
+
+				const contentDiv = createDiv();
+				contentDiv.className = GanttClasses.elements.taskContentCell;
+				contentDiv.addClass('gc-u-flex', 'gc-u-items-center', 'gc-u-pointer');
+				setCssProps(contentDiv, {
+					height: '100%',
+					width: '100%',
+					boxSizing: 'border-box',
+					fontSize: '12px',
+					fontWeight: '600',
+					color: 'var(--text-normal)',
+					gap: '6px',
+					padding: '0 4px 0 6px',
+				});
+				contentDiv.addEventListener('click', (e) => {
+					e.stopPropagation();
+					this.toggleGroupCollapse(group.id);
+				});
+
+				const iconSpan = createSpan();
+				iconSpan.textContent = group.icon;
+				setCssProps(iconSpan, { flexShrink: '0', display: 'flex', alignItems: 'center' });
+				contentDiv.appendChild(iconSpan);
+
+				const titleSpan = createSpan();
+				titleSpan.textContent = group.title;
+				setCssProps(titleSpan, {
+					flex: '1',
+					minWidth: '0',
+					overflow: 'hidden',
+					textOverflow: 'ellipsis',
+					whiteSpace: 'nowrap',
+				});
+				contentDiv.appendChild(titleSpan);
+
+				// Licznik tasków w grupie (badge w prawej kolumnie)
+				const priorityContainer = createDiv();
+				setCssProps(priorityContainer, {
+					width: `${priorityWidth}px`,
+					flexShrink: '0',
+					display: 'flex',
+					justifyContent: 'center',
+					alignItems: 'center',
+				});
+
+				const badgeSpan = createSpan();
+				badgeSpan.textContent = String(group.count);
+				setCssProps(badgeSpan, {
+					fontSize: '10px',
+					fontWeight: '700',
+					padding: '2px 8px',
+					borderRadius: '10px',
+					backgroundColor: 'var(--background-modifier-border, rgba(255, 255, 255, 0.1))',
+					border: '1px solid var(--background-modifier-border)',
+					color: 'var(--text-muted)',
+				});
+				priorityContainer.appendChild(badgeSpan);
+				contentDiv.appendChild(priorityContainer);
+
+				contentForeignObj.appendChild(contentDiv);
+				rowGroup.appendChild(contentForeignObj);
+
+				// Pionowa linia dzieląca numer i zadanie
+				const dividerLine = activeDocument.createElementNS(ns, 'line');
+				dividerLine.setAttribute('x1', String(numberWidth));
+				dividerLine.setAttribute('y1', String(y));
+				dividerLine.setAttribute('x2', String(numberWidth));
+				dividerLine.setAttribute('y2', String((index + 1) * this.rowHeight));
+				dividerLine.setAttribute('stroke', 'var(--background-modifier-border)');
+				dividerLine.setAttribute('stroke-width', '1');
+				rowGroup.appendChild(dividerLine);
+
+				// Pionowa linia dzieląca zadanie i priorytet
+				const pDividerLine = activeDocument.createElementNS(ns, 'line');
+				pDividerLine.setAttribute('x1', String(totalWidth - priorityWidth));
+				pDividerLine.setAttribute('y1', String(y));
+				pDividerLine.setAttribute('x2', String(totalWidth - priorityWidth));
+				pDividerLine.setAttribute('y2', String((index + 1) * this.rowHeight));
+				pDividerLine.setAttribute('stroke', 'var(--background-modifier-border)');
+				pDividerLine.setAttribute('stroke-width', '0.5');
+				pDividerLine.setAttribute('opacity', '0.6');
+				rowGroup.appendChild(pDividerLine);
+
+				// Pozioma linia podziału
+				const line = activeDocument.createElementNS(ns, 'line');
+				line.setAttribute('x1', '0');
+				line.setAttribute('y1', String((index + 1) * this.rowHeight));
+				line.setAttribute('x2', String(totalWidth));
+				line.setAttribute('y2', String((index + 1) * this.rowHeight));
+				line.setAttribute('stroke', 'var(--background-modifier-border)');
+				line.setAttribute('stroke-width', '1');
+				rowGroup.appendChild(line);
+
+				svg.appendChild(rowGroup);
+				return;
+			}
+
+			// === Wiersz zadania ===
+			const task = row.task;
 			const rowGroup = activeDocument.createElementNS(ns, 'g');
 			rowGroup.setAttribute('data-task-row', task.id);
 
-			// 直接从 GanttChartTask 获取信息（不需要查找 originalTask）
 			const isCompleted = task.completed || task.progress === 100;
 
-			// 行背景（所有行都添加，用于悬停高亮）
+			// Tło wiersza
 			const rowBg = activeDocument.createElementNS(ns, 'rect');
 			rowBg.setAttribute('x', '0');
 			rowBg.setAttribute('y', String(y));
-			rowBg.setAttribute('width', String(contentWidth + numberWidth));
+			rowBg.setAttribute('width', String(totalWidth));
 			rowBg.setAttribute('height', String(this.rowHeight));
 			rowBg.setAttribute('data-row-index', String(index));
 			addSvgClass(rowBg, GanttClasses.elements.rowBg);
-			// 偶数行使用默认背景色
 			if (index % 2 === 0) {
 				rowBg.setAttribute('fill', 'var(--background-secondary)');
 				rowBg.setAttribute('opacity', '0.3');
@@ -833,7 +1125,7 @@ export class SvgGanttRenderer {
 			rowGroup.appendChild(rowBg);
 			this.rowBgElements.taskList.push(rowBg);
 
-			// === 序号列 ===
+			// === Numer zadania (kolumna 36px) ===
 			const numberForeignObj = activeDocument.createElementNS(ns, 'foreignObject');
 			numberForeignObj.setAttribute('x', '0');
 			numberForeignObj.setAttribute('y', String(y));
@@ -844,53 +1136,120 @@ export class SvgGanttRenderer {
 			numberDiv.className = GanttClasses.elements.taskNumberCell;
 			numberDiv.addClass('gc-u-flex', 'gc-u-items-center', 'gc-u-text-muted', 'gc-u-font-medium');
 			setCssProps(numberDiv, { justifyContent: 'center', height: '100%', fontSize: '11px' });
-			numberDiv.textContent = String(taskNumber);
+			numberDiv.textContent = String(taskCounter++);
 			numberForeignObj.appendChild(numberDiv);
 			rowGroup.appendChild(numberForeignObj);
 
-			// === 任务内容列 ===
+			// === Treść zadania + Priorytet ===
 			const contentForeignObj = activeDocument.createElementNS(ns, 'foreignObject');
 			contentForeignObj.setAttribute('x', String(numberWidth));
 			contentForeignObj.setAttribute('y', String(y));
 			contentForeignObj.setAttribute('width', String(contentWidth));
 			contentForeignObj.setAttribute('height', String(this.rowHeight));
 
-			// 创建 HTML 内容容器
 			const contentDiv = createDiv();
 			contentDiv.className = GanttClasses.elements.taskContentCell;
-			contentDiv.addClass('gc-u-flex', 'gc-u-items-center', 'gc-u-w-full');
-			setCssProps(contentDiv, { height: '100%', fontSize: '12px', color: 'var(--text-normal)', gap: '8px', padding: '0 8px' });
+			contentDiv.addClass('gc-u-flex', 'gc-u-items-center');
+			setCssProps(contentDiv, {
+				height: '100%',
+				width: '100%',
+				boxSizing: 'border-box',
+				fontSize: '12px',
+				color: 'var(--text-normal)',
+				gap: '6px',
+				padding: row.isChild ? '0 4px 0 16px' : '0 4px 0 6px',
+			});
 
-			// === 创建复选框 ===
+			// Jeśli dziecko w grupie - wcięcie ze znakiem drzewa
+			if (row.isChild) {
+				const branch = createSpan();
+				branch.textContent = '└';
+				setCssProps(branch, { color: 'var(--text-faint, #666)', fontSize: '11px', flexShrink: '0' });
+				contentDiv.appendChild(branch);
+			}
+
+			// === Checkbox zadania ===
 			const checkbox = this.createTaskCheckbox(task, isCompleted);
+			setCssProps(checkbox, { flexShrink: '0' });
 			contentDiv.appendChild(checkbox);
 
-			// === 创建可点击的文本容器 ===
+			// === Tekst zadania ===
 			const textContainer = createDiv();
 			textContainer.className = 'gantt-task-list-item__text';
 			textContainer.addClass('gc-u-whitespace-nowrap', 'gc-u-pointer');
-			setCssProps(textContainer, { flex: '1' });
+			setCssProps(textContainer, {
+				flex: '1',
+				minWidth: '0',
+				overflow: 'hidden',
+				textOverflow: 'ellipsis',
+			});
 
-			// 设置点击事件用于跳转（阻止链接点击触发）
+			// Kliknięcie przenosi do notatki
 			textContainer.addEventListener('click', (e) => {
 				if ((e.target as HTMLElement).tagName !== 'A') {
-					e.stopPropagation(); // 阻止事件冒泡
+					e.stopPropagation();
+					this.hidePopup();
 					this.handleTaskListItemClick(task);
 				}
 			});
+			textContainer.addEventListener('contextmenu', (e: MouseEvent) => {
+				e.preventDefault();
+				e.stopPropagation();
+				this.hidePopup();
+				if (this.config.on_context_menu) {
+					this.config.on_context_menu(task, e);
+				}
+			});
 
-			// 使用用户设置 showGlobalFilterInTaskText 控制是否显示全局过滤词
 			const gf = (this.plugin?.settings?.globalTaskFilter || '').trim();
 			const displayText = (this.plugin?.settings?.showGlobalFilterInTaskText && gf)
 				? gf + ' ' + task.name
 				: task.name;
 			this.renderTaskDescriptionWithLinks(textContainer, displayText);
+
+			// Pokaż kartę tooltipa (tę samą co na pasku zadania)
+			textContainer.addEventListener('mouseenter', (event: MouseEvent) => {
+				if (isTouchNow() || this.taskDragState.isDragging) return;
+				this.showPopup(task, textContainer, { x: event.clientX, y: event.clientY });
+			});
+			textContainer.addEventListener('mouseleave', () => {
+				this.hidePopup();
+			});
+
 			contentDiv.appendChild(textContainer);
+
+			// Priorytet zadania (badge w prawej kolumnie)
+			const priorityContainer = createDiv();
+			setCssProps(priorityContainer, {
+				width: `${priorityWidth}px`,
+				flexShrink: '0',
+				display: 'flex',
+				justifyContent: 'center',
+				alignItems: 'center',
+			});
+
+			const pInfo = getPriorityInfo(task.priority);
+			const pBadge = createDiv();
+			pBadge.textContent = pInfo.label;
+			const pColor = pInfo.color || '#6b7280';
+			setCssProps(pBadge, {
+				fontSize: '10px',
+				fontWeight: '600',
+				padding: '2px 6px',
+				borderRadius: '4px',
+				backgroundColor: `color-mix(in srgb, ${pColor} 18%, transparent)`,
+				border: `1px solid color-mix(in srgb, ${pColor} 40%, transparent)`,
+				color: pColor,
+				textAlign: 'center',
+				whiteSpace: 'nowrap',
+			});
+			priorityContainer.appendChild(pBadge);
+			contentDiv.appendChild(priorityContainer);
 
 			contentForeignObj.appendChild(contentDiv);
 			rowGroup.appendChild(contentForeignObj);
 
-			// 序号列和任务列之间的竖线分隔
+			// Linia dzieląca numer i zadanie
 			const dividerLine = activeDocument.createElementNS(ns, 'line');
 			dividerLine.setAttribute('x1', String(numberWidth));
 			dividerLine.setAttribute('y1', String(y));
@@ -900,11 +1259,22 @@ export class SvgGanttRenderer {
 			dividerLine.setAttribute('stroke-width', '1');
 			rowGroup.appendChild(dividerLine);
 
-			// 底部分隔线
+			// Pionowa linia dzieląca zadanie i priorytet
+			const pDividerLine = activeDocument.createElementNS(ns, 'line');
+			pDividerLine.setAttribute('x1', String(totalWidth - priorityWidth));
+			pDividerLine.setAttribute('y1', String(y));
+			pDividerLine.setAttribute('x2', String(totalWidth - priorityWidth));
+			pDividerLine.setAttribute('y2', String((index + 1) * this.rowHeight));
+			pDividerLine.setAttribute('stroke', 'var(--background-modifier-border)');
+			pDividerLine.setAttribute('stroke-width', '0.5');
+			pDividerLine.setAttribute('opacity', '0.6');
+			rowGroup.appendChild(pDividerLine);
+
+			// Pozioma linia oddzielająca wiersze
 			const line = activeDocument.createElementNS(ns, 'line');
 			line.setAttribute('x1', '0');
 			line.setAttribute('y1', String((index + 1) * this.rowHeight));
-			line.setAttribute('x2', String(contentWidth + numberWidth));
+			line.setAttribute('x2', String(totalWidth));
 			line.setAttribute('y2', String((index + 1) * this.rowHeight));
 			line.setAttribute('stroke', 'var(--background-modifier-border)');
 			line.setAttribute('stroke-width', '0.5');
@@ -986,6 +1356,8 @@ export class SvgGanttRenderer {
 			columnWidth: this.columnWidth,
 			headerHeight: this.headerHeight,
 			padding: this.padding,
+			getVacation: (date: Date) => this.plugin?.vacationService?.getVacation(date) ?? null,
+			vacationColor: this.plugin?.settings?.vacationHighlightColor,
 		});
 	}
 
@@ -996,15 +1368,23 @@ export class SvgGanttRenderer {
 		svg: SVGSVGElement | null,
 		minDate: Date,
 		totalUnits: number,
-		fullHeight: number,
+		rowsHeight: number,
 		granularity: TimeGranularity
 	): void {
 		if (!svg) return;
 
+		while (svg.firstChild) {
+			svg.removeChild(svg.firstChild);
+		}
+
 		const ns = 'http://www.w3.org/2000/svg';
 		// 移除左侧 padding，只保留右侧 padding
 		const width = totalUnits * this.columnWidth + this.padding;
-		const height = fullHeight - this.headerHeight;
+		const height = rowsHeight;
+
+		svg.setAttribute('width', String(width));
+		svg.setAttribute('height', String(height));
+		svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
 
 		// 背景 - 从 x=0 开始（与任务列表分隔线对齐）
 		const bg = activeDocument.createElementNS(ns, 'rect');
@@ -1021,11 +1401,11 @@ export class SvgGanttRenderer {
 		// 绘制网格线（传递 width 用于水平线）
 		this.renderGrid(ns, svg, minDate, totalUnits, width, height, granularity);
 
-		// 绘制今天线
-		renderTodayLine(ns, svg, minDate, totalUnits, height, granularity, this.columnWidth);
-
 		// 绘制任务条
 		this.renderTaskBars(ns, svg, minDate, totalUnits, granularity);
+
+		// 绘制今天线（放在任务条之后渲染，保证线与 DZIŚ badge są na wierzchu i nie są zakrywane przez taski）
+		renderTodayLine(ns, svg, minDate, totalUnits, height, granularity, this.columnWidth);
 	}
 
 	/**
@@ -1085,7 +1465,9 @@ export class SvgGanttRenderer {
 		renderGrid(
 			ns,
 			{ svg, minDate, totalUnits, granularity, columnWidth: this.columnWidth, rowHeight: this.rowHeight,
-			  tasksLength: this.tasks.length, width, height, padding: this.padding },
+			  tasksLength: this.displayRows.length, width, height, padding: this.padding,
+			  getVacation: (date: Date) => this.plugin?.vacationService?.getVacation(date) ?? null,
+			  vacationColor: this.plugin?.settings?.vacationHighlightColor },
 			this.rowBgElements.gantt,
 		);
 	}
@@ -1105,7 +1487,13 @@ export class SvgGanttRenderer {
 		const tasksGroup = activeDocument.createElementNS(ns, 'g');
 		addSvgClass(tasksGroup, GanttClasses.elements.tasks);
 
-		this.tasks.forEach((task, index) => {
+		this.displayRows.forEach((row, index) => {
+			if (row.type === 'group') {
+				// Wiersz grupy na osi czasu pozostaje czysty (klamra usunięta na życzenie)
+				return;
+			}
+
+			const task = row.task;
 			const taskStart = SvgGanttRenderer.parseLocalDate(task.start);
 			const taskEnd = SvgGanttRenderer.parseLocalDate(task.end);
 
@@ -1151,27 +1539,17 @@ export class SvgGanttRenderer {
 			bar.setAttribute('height', '24');
 			bar.setAttribute('rx', '4');
 
-			// 根据状态设置颜色
-			let fillColor = 'var(--interactive-accent)';
-			if (task.progress === 100) {
+			// Określenie koloru paska zadania wg priorytetu
+			let fillColor = getPriorityBarColor(task.priority);
+			if (task.completed || task.progress === 100) {
 				fillColor = 'var(--gc-task-completed, #52c41a)';
-			} else if (task.custom_class) {
-				// 解析自定义类名获取颜色
-				if (task.custom_class.includes('priority-highest')) {
-					fillColor = 'var(--priority-highest-color, #ef4444)';
-				} else if (task.custom_class.includes('priority-high')) {
-					fillColor = 'var(--priority-high-color, #f97316)';
-				} else if (task.custom_class.includes('priority-medium')) {
-					fillColor = 'var(--priority-medium-color, #eab308)';
-				} else if (task.custom_class.includes('priority-low')) {
-					fillColor = 'var(--priority-low-color, #22c55e)';
-				}
 			}
 
 			bar.setAttribute('fill', fillColor);
 			bar.setAttribute('opacity', '0.85');
 			bar.setAttribute('cursor', 'pointer');
 			bar.classList.add('task-bar');
+			bar.classList.add(`priority-${(task.priority || 'normal').toLowerCase()}`);
 
 			// 进度条
 			let progressElement: SVGRectElement | null = null;
@@ -1249,23 +1627,121 @@ export class SvgGanttRenderer {
 			rightVisual.setAttribute('opacity', '0.5');
 			setCssProps(rightVisual as unknown as HTMLElement, { pointerEvents: 'none' });
 
-			// 设置拖动事件
-			this.setupTaskBarDragging(barGroup as SVGGElement, bar as SVGRectElement, leftHandle as SVGRectElement, rightHandle as SVGRectElement, task, minDate);
+			const barWidthClamped = Math.max(barWidth, 20);
 
-			// 添加点击和悬停事件（如果刚结束拖动，不执行点击）
-			bar.addEventListener('click', (e) => {
+			// HTML5 可拖拽任务条（支持拖拽至 Daily Timeline）
+			const barForeign = activeDocument.createElementNS(ns, 'foreignObject') as SVGForeignObjectElement;
+			barForeign.setAttribute('x', String(x));
+			barForeign.setAttribute('y', String(y));
+			barForeign.setAttribute('width', String(barWidthClamped));
+			barForeign.setAttribute('height', '24');
+			barForeign.classList.add('task-bar-foreign');
+			setCssProps(barForeign as unknown as HTMLElement, { overflow: 'visible' });
+
+			const barDiv = createDiv();
+			barDiv.className = `task-bar task-bar-drag priority-${(task.priority || 'normal').toLowerCase()}`;
+			barDiv.setAttribute('draggable', 'true');
+			barDiv.setAttribute('data-task-id', `${task.filePath}:${task.lineNumber}`);
+			setCssProps(barDiv, {
+				width: '100%',
+				height: '100%',
+				display: 'block',
+				position: 'relative',
+				borderRadius: '4px',
+				backgroundColor: fillColor,
+				opacity: '0.85',
+				cursor: 'grab',
+				boxSizing: 'border-box',
+				userSelect: 'none',
+			});
+
+			if (task.progress > 0 && task.progress < 100) {
+				const progressDiv = createDiv();
+				progressDiv.className = 'task-progress-fill';
+				setCssProps(progressDiv, {
+					position: 'absolute',
+					top: '0',
+					left: '0',
+					width: `${task.progress}%`,
+					height: '100%',
+					borderRadius: '4px',
+					backgroundColor: fillColor,
+					opacity: '0.4',
+					pointerEvents: 'none',
+				});
+				barDiv.appendChild(progressDiv);
+			}
+			barForeign.appendChild(barDiv);
+
+			// HTML5 Drag & Drop handlers
+			barDiv.addEventListener('dragstart', (e: DragEvent) => {
+				if (!e.dataTransfer) return;
+				const taskId = `${task.filePath}:${task.lineNumber}`;
+				e.dataTransfer.effectAllowed = 'move';
+				e.dataTransfer.setData('taskId', taskId);
+				e.dataTransfer.setData('text/plain', taskId);
+
+				let durationMin = 60;
+				if (task.start && task.end) {
+					const s = SvgGanttRenderer.parseLocalDate(task.start);
+					const en = SvgGanttRenderer.parseLocalDate(task.end);
+					const diffMin = Math.round((en.getTime() - s.getTime()) / 60000);
+					if (diffMin > 0 && diffMin < 1440) {
+						durationMin = diffMin;
+					}
+				}
+
+				const rect = barDiv.getBoundingClientRect();
+				const offsetPx = Math.max(0, e.clientY - rect.top);
+				setBlockDragMeta({
+					offsetPx,
+					durationMin,
+				});
+
+				const offsetInBar = e.clientX - rect.left;
+				const offsetDays = Math.max(0, Math.floor(offsetInBar / this.columnWidth));
+				e.dataTransfer.setData('ganttOffsetDays', String(offsetDays));
+
+				barDiv.style.opacity = '0.5';
+				bar.setAttribute('opacity', '0.5');
+			});
+
+			barDiv.addEventListener('dragend', () => {
+				clearBlockDragMeta();
+				barDiv.style.opacity = '0.85';
+				bar.setAttribute('opacity', '0.85');
+			});
+
+			barDiv.addEventListener('click', (e) => {
 				if (this.taskDragState.justFinishedDragging) return;
-				e.stopPropagation(); // 阻止事件冒泡
+				if (e.button !== 0) return;
+				e.stopPropagation();
 				this.handleTaskClick(task);
 			});
-			bar.addEventListener('mouseenter', (event: MouseEvent) => {
+
+			barDiv.addEventListener('mouseenter', (event: MouseEvent) => {
 				if (isTouchNow()) return;
+				barDiv.style.opacity = '1';
 				bar.setAttribute('opacity', '1');
-				this.showPopup(task, bar, { x: event.clientX, y: event.clientY });
+				this.showPopup(task, barDiv, { x: event.clientX, y: event.clientY });
 			});
-			bar.addEventListener('mouseleave', () => {
+			barDiv.addEventListener('mouseleave', () => {
+				barDiv.style.opacity = '0.85';
 				bar.setAttribute('opacity', '0.85');
 				this.hidePopup();
+			});
+
+			// 设置拖动事件（handles 与 touch 拖动）
+			this.setupTaskBarDragging(barGroup as SVGGElement, barForeign as unknown as SVGRectElement, leftHandle as SVGRectElement, rightHandle as SVGRectElement, task, minDate);
+
+			// 右键菜单
+			barGroup.addEventListener('contextmenu', (e: MouseEvent) => {
+				e.preventDefault();
+				e.stopPropagation();
+				this.hidePopup();
+				if (this.config.on_context_menu) {
+					this.config.on_context_menu(task, e);
+				}
 			});
 
 			// leadBar 悬停事件（黑色引导区域 tooltip）
@@ -1278,16 +1754,25 @@ export class SvgGanttRenderer {
 				leadBarEl.addEventListener('mouseleave', () => {
 					this.hidePopup();
 				});
+				leadBarEl.addEventListener('contextmenu', (e: MouseEvent) => {
+					e.preventDefault();
+					e.stopPropagation();
+					this.hidePopup();
+					if (this.config.on_context_menu) {
+						this.config.on_context_menu(task, e);
+					}
+				});
 				barGroup.appendChild(leadBarEl);
 			}
-			if (progressElement) {
-				barGroup.appendChild(progressElement);  // 进度条
+			barGroup.appendChild(bar);               // SVG 矩形底衬
+			barGroup.appendChild(barForeign);         // HTML5 可拖拽层
+			if (timeBadge) {
+				barGroup.appendChild(timeBadge);
 			}
-			barGroup.appendChild(bar);       // 主任务条
-			barGroup.appendChild(leftHandle);   // 左侧手柄
-			barGroup.appendChild(leftVisual);   // 左侧视觉
-			barGroup.appendChild(rightHandle);  // 右侧手柄
-			barGroup.appendChild(rightVisual);  // 右侧视觉
+			barGroup.appendChild(leftHandle);        // 左侧手柄（resize-left）
+			barGroup.appendChild(leftVisual);        // 左侧视觉小点
+			barGroup.appendChild(rightHandle);       // 右侧手柄（resize-right）
+			barGroup.appendChild(rightVisual);       // 右侧视觉小点
 			tasksGroup.appendChild(barGroup);
 		});
 
@@ -1483,10 +1968,11 @@ export class SvgGanttRenderer {
 			this.minDate = minDate;
 			this.totalUnits = totalUnits;
 			const ganttWidth = totalUnits * this.columnWidth + this.padding * 2;
-			const ganttHeight = this.headerHeight + this.tasks.length * this.rowHeight;
+			const rowsHeight = this.displayRows.length * this.rowHeight;
 
 			this.ganttSvg.setAttribute('width', String(ganttWidth));
-			this.ganttSvg.setAttribute('height', String(ganttHeight));
+			this.ganttSvg.setAttribute('height', String(rowsHeight));
+			this.ganttSvg.setAttribute('viewBox', `0 0 ${ganttWidth} ${rowsHeight}`);
 
 			// Header must be redrawn as well: an extended date range with stale
 			// labels would desync from the grid drawn below it.
@@ -1498,7 +1984,7 @@ export class SvgGanttRenderer {
 				this.renderHeader(this.headerSvg, minDate, totalUnits, granularity);
 			}
 
-			this.renderGanttChart(this.ganttSvg, minDate, totalUnits, ganttHeight, granularity);
+			this.renderGanttChart(this.ganttSvg, minDate, totalUnits, rowsHeight, granularity);
 
 			if (this.ganttContainer) {
 				this.ganttContainer.scrollLeft = savedScrollLeft;
@@ -1538,22 +2024,32 @@ export class SvgGanttRenderer {
 			bar.setAttribute('width', String(barWidth));
 			bar.setAttribute('y', String(y));
 
-			// 更新颜色（根据完成状态）
+			// 更新颜色（根据完成状态及优先级）
 			const isCompleted = task.completed || task.progress === 100;
 			if (isCompleted) {
-				bar.setAttribute('fill', 'var(--checkbox-done)'); // 完成状态颜色
+				bar.setAttribute('fill', 'var(--gc-task-completed, #52c41a)');
 			} else {
-				// 根据优先级设置颜色
-				const priorityClass = task.custom_class?.split(' ').find(c => c.startsWith('priority-'));
-				if (priorityClass === 'priority-high') {
-					bar.setAttribute('fill', 'var(--tag-fill-hot)');
-				} else if (priorityClass === 'priority-medium') {
-					bar.setAttribute('fill', 'var(--tag-fill-warm)');
-				} else if (priorityClass === 'priority-low') {
-					bar.setAttribute('fill', 'var(--tag-fill-cool)');
-				} else {
-					bar.setAttribute('fill', 'var(--interactive-accent)');
-				}
+				bar.setAttribute('fill', getPriorityBarColor(task.priority));
+			}
+			bar.classList.forEach(cls => {
+				if (cls.startsWith('priority-')) bar.classList.remove(cls);
+			});
+			bar.classList.add(`priority-${(task.priority || 'normal').toLowerCase()}`);
+		}
+
+		const barForeign = barGroup.querySelector('.task-bar-foreign') as SVGForeignObjectElement;
+		if (barForeign) {
+			barForeign.setAttribute('x', String(x));
+			barForeign.setAttribute('width', String(barWidth));
+			barForeign.setAttribute('y', String(y));
+			const barDiv = barForeign.querySelector('.task-bar-drag') as HTMLElement;
+			if (barDiv) {
+				const isCompleted = task.completed || task.progress === 100;
+				const fillColor = isCompleted
+					? 'var(--gc-task-completed, #52c41a)'
+					: getPriorityBarColor(task.priority);
+				barDiv.style.backgroundColor = fillColor;
+				barDiv.className = `task-bar task-bar-drag priority-${(task.priority || 'normal').toLowerCase()}`;
 			}
 		}
 
@@ -1668,28 +2164,59 @@ export class SvgGanttRenderer {
 	}
 
 	/**
+	 * Oblicza pozycję scrollLeft, która centruje kolumnę dzisiejszego dnia w widoku
+	 */
+	public getTodayScrollLeft(): number {
+		if (!this.ganttContainer || !this.minDate) return 0;
+
+		const today = getTodayInTimezone();
+		let unitsDiff: number;
+		if (!this.granularity || (this.granularity as string) === 'day' || this.granularity === TimeGranularity.DAY) {
+			const utcToday = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+			const utcMin = Date.UTC(this.minDate.getFullYear(), this.minDate.getMonth(), this.minDate.getDate());
+			unitsDiff = Math.round((utcToday - utcMin) / 86400000);
+		} else {
+			const config = GRANULARITY_CONFIGS[this.granularity];
+			unitsDiff = Math.round((today.getTime() - this.minDate.getTime()) / config.milliseconds);
+		}
+
+		if (unitsDiff >= 0 && unitsDiff <= this.totalUnits) {
+			// Środek kolumny dzisiejszego dnia
+			const todayX = unitsDiff * this.columnWidth + this.columnWidth / 2;
+			const containerWidth = this.ganttContainer.clientWidth;
+			if (containerWidth > 0) {
+				return Math.max(0, Math.round(todayX - containerWidth / 2));
+			}
+			return Math.max(0, Math.round(todayX - 400));
+		}
+		return 0;
+	}
+
+	/**
 	 * 滚动到今天 - 支持颗粒度
 	 */
 	scrollToToday(): void {
 		if (!this.ganttContainer || !this.minDate) return;
 
-		const today = getTodayInTimezone();
-		const config = GRANULARITY_CONFIGS[this.granularity];
-		const unitsDiff = (today.getTime() - this.minDate.getTime()) / config.milliseconds;
+		let retries = 0;
+		const doScroll = () => {
+			if (!this.ganttContainer || !this.minDate) return;
 
-		if (unitsDiff >= 0 && unitsDiff <= this.totalUnits) {
-			// 计算今天的 x 坐标
-			const todayX = unitsDiff * this.columnWidth;
-
-			// 获取容器宽度
 			const containerWidth = this.ganttContainer.clientWidth;
+			if (containerWidth <= 0 && retries++ < 5 && this.ganttContainer.isConnected) {
+				window.requestAnimationFrame(doScroll);
+				return;
+			}
 
-			// 滚动到使今天线居中的位置
-			const scrollLeft = todayX - containerWidth / 2;
+			const scrollLeft = this.getTodayScrollLeft();
+			this.ganttContainer.scrollLeft = scrollLeft;
+			if (this.headerContainer) {
+				this.headerContainer.scrollLeft = scrollLeft;
+			}
+		};
 
-			// 设置滚动位置
-			this.ganttContainer.scrollLeft = Math.max(0, scrollLeft);
-		}
+		doScroll();
+		window.requestAnimationFrame(doScroll);
 	}
 
 	/**
@@ -1711,6 +2238,12 @@ export class SvgGanttRenderer {
 				if (this.ganttContainer) {
 					this.ganttContainer.scrollLeft = scrollLeft;
 					this.ganttContainer.scrollTop = scrollTop;
+					if (this.headerContainer) {
+						this.headerContainer.scrollLeft = scrollLeft;
+					}
+					if (this.taskListContainer) {
+						this.taskListContainer.scrollTop = scrollTop;
+					}
 				}
 			});
 		}
@@ -1722,6 +2255,9 @@ export class SvgGanttRenderer {
 	scrollToLeft(): void {
 		if (this.ganttContainer) {
 			this.ganttContainer.scrollLeft = 0;
+			if (this.headerContainer) {
+				this.headerContainer.scrollLeft = 0;
+			}
 		}
 	}
 
@@ -1730,7 +2266,11 @@ export class SvgGanttRenderer {
 	 */
 	scrollToRight(): void {
 		if (this.ganttContainer) {
-			this.ganttContainer.scrollLeft = this.ganttContainer.scrollWidth;
+			const maxScroll = this.ganttContainer.scrollWidth;
+			this.ganttContainer.scrollLeft = maxScroll;
+			if (this.headerContainer) {
+				this.headerContainer.scrollLeft = maxScroll;
+			}
 		}
 	}
 

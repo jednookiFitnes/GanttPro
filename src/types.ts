@@ -277,7 +277,13 @@ export interface IPluginContext {
 		onUpdate(handler: (filePath?: string) => void): void;
 		offUpdate(handler: (filePath?: string) => void): void;
 		refreshFile(filePath: string): Promise<void>;
-		initialize(globalTaskFilter: string, enabledFormats?: string[], retryCount?: number): Promise<void>;
+		initialize(
+			globalTaskFilter: string,
+			enabledFormats?: string[],
+			includeFolders?: string[],
+			excludeFolders?: string[],
+			retryCount?: number
+		): Promise<void>;
 	};
 	calendarView?: {
 		selectDate(date: Date, viewType?: CalendarViewType): void;
@@ -285,5 +291,6 @@ export interface IPluginContext {
 	};
 	app: App;
 	dailyNoteIndex?: DailyNoteIndex;
+	vacationService?: any;
 	refreshCalendarViews(): void;
 }

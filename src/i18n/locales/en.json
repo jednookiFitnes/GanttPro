@@ -283,6 +283,20 @@
           "name": "Show Global Filter in Task Text",
           "description": "Display the global filter prefix in task list text. When disabled, only the task description is shown"
         },
+        "includeFolders": {
+          "name": "Include Task Folders",
+          "description": "Only show tasks from these folders and their subfolders. Leave empty to show tasks from all folders.",
+          "placeholder": "Select or type folder...",
+          "add": "Add",
+          "empty": "All folders are included (no restriction)"
+        },
+        "excludeFolders": {
+          "name": "Ignore Task Folders",
+          "description": "Ignore tasks from these folders and their subfolders. Takes precedence over included folders.",
+          "placeholder": "Select or type folder...",
+          "add": "Add",
+          "empty": "No folders are ignored"
+        },
         "taskNotePath": {
           "name": "Task Note Folder Path",
           "description": "Default folder path for notes created from tasks (relative to vault root)"
@@ -1370,7 +1384,8 @@
         "priorityFilter": "Priority Filter",
         "tagFilter": "Tag Filter",
         "sort": "Sort",
-        "dateFilter": "Date Filter"
+        "dateFilter": "Date Filter",
+        "ganttFilter": "Gantt Filter"
       },
       "priority": {
         "all": "All",
@@ -1393,6 +1408,11 @@
         "today": "Today",
         "thisWeek": "This Week",
         "thisMonth": "This Month"
+      },
+      "ganttFilterOptions": {
+        "all": "All tasks",
+        "notInGantt": "Not in Gantt (no start/due)",
+        "inGantt": "In Gantt (has start & due)"
       },
       "tagFilter": {
         "matchMode": "Match mode: "
@@ -1419,7 +1439,25 @@
         "goToday": "Go to today"
       },
       "noTasks": "No tasks on this day",
-      "allDay": "All Day"
+      "noMatchingTasks": "No matching tasks",
+      "searchPlaceholder": "Search tasks...",
+      "filterBar": {
+        "statusFilter": "Status filter",
+        "priorityFilter": "Priority filter",
+        "tagFilter": "Tag filter",
+        "hideCompleted": "Hide completed",
+        "showCompleted": "Show completed",
+        "clearFilters": "Clear filters"
+      },
+      "viewMode": {
+        "timeline": "Switch to timeline grid view",
+        "agenda": "Switch to agenda list view"
+      },
+      "allDay": "All Day",
+      "timedTasks": "Schedule",
+      "noTimedTasks": "No scheduled tasks",
+      "moreTasks": "+{{count}} more",
+      "clusterModalTitle": "Tasks in this time slot"
     }
   },
   "taskStatus": {

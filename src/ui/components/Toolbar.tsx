@@ -44,6 +44,10 @@ export function ToolbarBar(): JSX.Element {
 	const setTagFilter = useCalendarStore((s) => s.setTagFilter);
 	const setSort = useCalendarStore((s) => s.setSort);
 	const setTasks = useCalendarStore((s) => s.setTasks);
+	const ganttGroupBy = useCalendarStore((s) => s.ganttGroupBy);
+	const setGanttGroupBy = useCalendarStore((s) => s.setGanttGroupBy);
+	const taskViewGroupBy = useCalendarStore((s) => s.taskViewGroupBy);
+	const setTaskViewGroupBy = useCalendarStore((s) => s.setTaskViewGroupBy);
 
 	const showButtonText = plugin.settings.showViewNavButtonText ?? true;
 	const startOnMonday = !!plugin.settings.startOnMonday;
@@ -193,6 +197,48 @@ export function ToolbarBar(): JSX.Element {
 		}];
 	};
 
+	// ===== Widok zadań (TaskView): Menu wyboru trybu grupowania =====
+	const taskViewGroupMenuSections = (): DropdownMenuSection[] => {
+		const options: Array<{ key: 'none' | 'folder' | 'priority'; label: string }> = [
+			{ key: 'folder', label: '📁 Wg folderu' },
+			{ key: 'priority', label: '🔺 Wg priorytetu' },
+			{ key: 'none', label: 'Brak (płaska lista)' },
+		];
+		return [{
+			items: options.map((opt) => ({
+				key: opt.key,
+				title: opt.label,
+				checked: taskViewGroupBy === opt.key,
+				onClick: () => {
+					setTaskViewGroupBy(opt.key);
+					plugin.settings.taskViewGroupBy = opt.key;
+					void plugin.saveSettings();
+				},
+			})),
+		}];
+	};
+
+	// ===== Widok Gantta: Menu wyboru trybu grupowania (z trwałym zapisem w ustawieniach) =====
+	const ganttGroupMenuSections = (): DropdownMenuSection[] => {
+		const options: Array<{ key: 'none' | 'folder' | 'priority'; label: string }> = [
+			{ key: 'folder', label: '📁 Wg folderu' },
+			{ key: 'priority', label: '🔺 Wg priorytetu' },
+			{ key: 'none', label: 'Brak (płaska lista)' },
+		];
+		return [{
+			items: options.map((opt) => ({
+				key: opt.key,
+				title: opt.label,
+				checked: ganttGroupBy === opt.key,
+				onClick: () => {
+					setGanttGroupBy(opt.key);
+					plugin.settings.ganttGroupBy = opt.key;
+					void plugin.saveSettings();
+				},
+			})),
+		}];
+	};
+
 	// ===== 任务视图：写回设置并触发重挂载 =====
 	const updateTaskViewSettings = async (patch: Partial<GanttCalendarSettings>): Promise<void> => {
 		Object.assign(plugin.settings, patch);
@@ -207,9 +253,13 @@ export function ToolbarBar(): JSX.Element {
 		sections.push(...statusMenuSections());
 		// 排序
 		sections.push(...sortMenuSections());
-		// 任务视图专属：时间字段 + 日期范围
+		// 任务视图专属：时间字段 + 日期范围 + Grupowanie
 		if (viewType === 'task') {
-			sections.push(...fieldMenuSections(), ...dateRangeMenuSections());
+			sections.push(...taskViewGroupMenuSections(), ...fieldMenuSections(), ...dateRangeMenuSections());
+		}
+		// Widok Gantta: Grupowanie zadań
+		if (viewType === 'gantt') {
+			sections.push(...ganttGroupMenuSections());
 		}
 		// 动作
 		sections.push({
@@ -260,6 +310,13 @@ export function ToolbarBar(): JSX.Element {
 					<>
 						{!isPhone && (
 							<>
+								<div className={ToolbarClasses.components.navButtons.group}>
+									<DropdownMenu sections={taskViewGroupMenuSections()}>
+										{({ onClick, 'aria-expanded': expanded }) => (
+											<ToolbarBtn icon="folder-tree" label="Grupowanie zadań (folder / priorytet)" ariaExpanded={expanded} onClick={onClick} />
+										)}
+									</DropdownMenu>
+								</div>
 								<div className={ToolbarClasses.components.navButtons.group}>
 									<DropdownMenu sections={statusMenuSections()}>
 										{({ onClick, 'aria-expanded': expanded }) => (
@@ -414,6 +471,13 @@ export function ToolbarBar(): JSX.Element {
 						</div>
 						{!isPhone && (
 							<>
+								<div className={ToolbarClasses.components.navButtons.group}>
+									<DropdownMenu sections={ganttGroupMenuSections()}>
+										{({ onClick, 'aria-expanded': expanded }) => (
+											<ToolbarBtn icon="folder-tree" label="Grupowanie zadań (folder / priorytet)" ariaExpanded={expanded} onClick={onClick} />
+										)}
+									</DropdownMenu>
+								</div>
 								<div className={ToolbarClasses.components.navButtons.group}>
 									<DropdownMenu sections={statusMenuSections()}>
 										{({ onClick, 'aria-expanded': expanded }) => (

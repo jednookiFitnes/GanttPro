@@ -265,19 +265,170 @@
 	flex-wrap: nowrap;
 	overflow: hidden;
 	box-shadow: none;
+	border: 1px solid rgba(0, 0, 0, 0.15);
 	border-left-width: 2px;
+	background-color: var(--priority-bar-color, var(--task-bg-color, var(--background-secondary)));
+	color: var(--task-text-color, #ffffff);
 }
 
-/* 时间轴内悬停不浮动（保持网格行高稳定） */
+/* 时间轴内悬停保持背景与高亮 */
 .gc-task-card.gc-task-card--timeline:hover {
 	transform: none;
-	box-shadow: none;
+	filter: brightness(1.08);
+	background-color: var(--priority-bar-color, var(--task-bg-color, var(--background-secondary)));
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
 
 .gc-task-card--timeline .gc-task-card__text {
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+	color: var(--task-text-color, #ffffff) !important;
+}
+
+/* 优先级颜色（与甘特图视图优先级颜色一致） */
+.gc-task-card--timeline.priority-highest,
+.gc-day-canvas__block.priority-highest .gc-task-card--timeline,
+.gc-week-view__time-block.priority-highest .gc-task-card--timeline,
+.gc-month-view__span-bar.priority-highest .gc-task-card--timeline,
+.gc-month-view__tasks .gc-task-card--timeline.priority-highest {
+	background-color: var(--priority-highest-color, #ef4444);
+	color: #ffffff;
+}
+
+.gc-task-card--timeline.priority-high,
+.gc-day-canvas__block.priority-high .gc-task-card--timeline,
+.gc-week-view__time-block.priority-high .gc-task-card--timeline,
+.gc-month-view__span-bar.priority-high .gc-task-card--timeline,
+.gc-month-view__tasks .gc-task-card--timeline.priority-high {
+	background-color: var(--priority-high-color, #f97316);
+	color: #ffffff;
+}
+
+.gc-task-card--timeline.priority-medium,
+.gc-day-canvas__block.priority-medium .gc-task-card--timeline,
+.gc-week-view__time-block.priority-medium .gc-task-card--timeline,
+.gc-month-view__span-bar.priority-medium .gc-task-card--timeline,
+.gc-month-view__tasks .gc-task-card--timeline.priority-medium,
+.gc-timeline-agenda__row.priority-medium .gc-task-card--timeline {
+	background-color: var(--priority-medium-color, #eab308);
+	color: #18181b !important;
+}
+
+.gc-task-card--timeline.priority-medium .gc-task-card__text,
+.gc-day-canvas__block.priority-medium .gc-task-card--timeline .gc-task-card__text,
+.gc-week-view__time-block.priority-medium .gc-task-card--timeline .gc-task-card__text,
+.gc-month-view__span-bar.priority-medium .gc-task-card--timeline .gc-task-card__text,
+.gc-month-view__tasks .gc-task-card--timeline.priority-medium .gc-task-card__text,
+.gc-timeline-agenda__row.priority-medium .gc-task-card__text {
+	color: #18181b !important;
+	font-weight: 600;
+}
+
+/* Folder na żółtym tle */
+.gc-task-card--timeline.priority-medium .gc-task-card__folder,
+.gc-day-canvas__block.priority-medium .gc-task-card--timeline .gc-task-card__folder,
+.gc-week-view__time-block.priority-medium .gc-task-card--timeline .gc-task-card__folder,
+.gc-month-view__span-bar.priority-medium .gc-task-card--timeline .gc-task-card__folder,
+.gc-month-view__tasks .gc-task-card--timeline.priority-medium .gc-task-card__folder,
+.gc-timeline-agenda__row.priority-medium .gc-task-card__folder,
+.gc-timeline-agenda__item.priority-medium .gc-task-card__folder,
+.gc-timeline-agenda .gc-task-card--timeline.priority-medium .gc-task-card__folder {
+	color: #18181b !important;
+	background: rgba(0, 0, 0, 0.12) !important;
+	font-weight: 600;
+}
+
+/* Checkbox na żółtym tle (priority-medium) */
+.gc-task-card--timeline.priority-medium .gc-task-card__checkbox,
+.gc-day-canvas__block.priority-medium .gc-task-card__checkbox,
+.gc-week-view__time-block.priority-medium .gc-task-card__checkbox,
+.gc-month-view__span-bar.priority-medium .gc-task-card__checkbox,
+.gc-month-view__tasks .gc-task-card--timeline.priority-medium .gc-task-card__checkbox,
+.gc-timeline-agenda__row.priority-medium .gc-task-card__checkbox,
+.gc-sidebar__timeline-allday-item.priority-medium .gc-task-card__checkbox {
+	border-color: #18181b !important;
+	background: rgba(0, 0, 0, 0.15) !important;
+}
+
+.gc-task-card--timeline.priority-medium .gc-task-card__checkbox:hover,
+.gc-day-canvas__block.priority-medium .gc-task-card__checkbox:hover,
+.gc-week-view__time-block.priority-medium .gc-task-card__checkbox:hover,
+.gc-month-view__span-bar.priority-medium .gc-task-card__checkbox:hover,
+.gc-month-view__tasks .gc-task-card--timeline.priority-medium .gc-task-card__checkbox:hover,
+.gc-timeline-agenda__row.priority-medium .gc-task-card__checkbox:hover,
+.gc-sidebar__timeline-allday-item.priority-medium .gc-task-card__checkbox:hover {
+	border-color: #000000 !important;
+	background: rgba(0, 0, 0, 0.28) !important;
+	box-shadow: 0 0 6px rgba(0, 0, 0, 0.45) !important;
+}
+
+.gc-task-card--timeline.priority-medium .gc-task-card__checkbox:checked,
+.gc-day-canvas__block.priority-medium .gc-task-card__checkbox:checked,
+.gc-week-view__time-block.priority-medium .gc-task-card__checkbox:checked,
+.gc-month-view__span-bar.priority-medium .gc-task-card__checkbox:checked,
+.gc-month-view__tasks .gc-task-card--timeline.priority-medium .gc-task-card__checkbox:checked,
+.gc-timeline-agenda__row.priority-medium .gc-task-card__checkbox:checked,
+.gc-sidebar__timeline-allday-item.priority-medium .gc-task-card__checkbox:checked {
+	background-color: #18181b !important;
+	border-color: #18181b !important;
+}
+
+.gc-task-card--timeline.priority-medium .gc-task-card__checkbox:checked::after,
+.gc-day-canvas__block.priority-medium .gc-task-card__checkbox:checked::after,
+.gc-week-view__time-block.priority-medium .gc-task-card__checkbox:checked::after,
+.gc-month-view__span-bar.priority-medium .gc-task-card__checkbox:checked::after,
+.gc-month-view__tasks .gc-task-card--timeline.priority-medium .gc-task-card__checkbox:checked::after,
+.gc-timeline-agenda__row.priority-medium .gc-task-card__checkbox:checked::after,
+.gc-sidebar__timeline-allday-item.priority-medium .gc-task-card__checkbox:checked::after {
+	border-color: #ffffff !important;
+}
+
+.gc-task-card--timeline.priority-normal,
+.gc-day-canvas__block.priority-normal .gc-task-card--timeline,
+.gc-week-view__time-block.priority-normal .gc-task-card--timeline,
+.gc-month-view__span-bar.priority-normal .gc-task-card--timeline,
+.gc-month-view__tasks .gc-task-card--timeline.priority-normal {
+	background-color: var(--priority-normal-color, #3b82f6);
+	color: #ffffff;
+}
+
+.gc-task-card--timeline.priority-low,
+.gc-day-canvas__block.priority-low .gc-task-card--timeline,
+.gc-week-view__time-block.priority-low .gc-task-card--timeline,
+.gc-month-view__span-bar.priority-low .gc-task-card--timeline,
+.gc-month-view__tasks .gc-task-card--timeline.priority-low {
+	background-color: var(--priority-low-color, #6b7280);
+	color: #ffffff;
+}
+
+.gc-task-card--timeline.priority-lowest,
+.gc-task-card--timeline.priority-none,
+.gc-day-canvas__block.priority-lowest .gc-task-card--timeline,
+.gc-week-view__time-block.priority-lowest .gc-task-card--timeline,
+.gc-month-view__span-bar.priority-lowest .gc-task-card--timeline,
+.gc-month-view__tasks .gc-task-card--timeline.priority-lowest,
+.gc-day-canvas__block.priority-none .gc-task-card--timeline,
+.gc-week-view__time-block.priority-none .gc-task-card--timeline,
+.gc-month-view__span-bar.priority-none .gc-task-card--timeline,
+.gc-month-view__tasks .gc-task-card--timeline.priority-none {
+	background-color: var(--priority-lowest-color, #9ca3af);
+	color: #ffffff;
+}
+
+.gc-task-card--timeline.is-completed,
+.gc-task-card--timeline.gc-task-card--completed,
+.gc-day-canvas__block.is-completed .gc-task-card--timeline,
+.gc-week-view__time-block.is-completed .gc-task-card--timeline,
+.gc-month-view__span-bar.is-completed .gc-task-card--timeline,
+.gc-month-view__tasks .gc-task-card--timeline.is-completed {
+	background-color: var(--gc-task-completed, #52c41a) !important;
+	opacity: 0.75;
+}
+
+.gc-task-card--timeline.is-completed .gc-task-card__text,
+.gc-task-card--timeline.gc-task-card--completed .gc-task-card__text {
+	text-decoration: line-through;
 }
 
 .gc-task-card--timeline .gc-task-card__tags {
@@ -292,8 +443,95 @@
 	flex-shrink: 0;
 }
 
-.gc-task-card--timeline .gc-task-card__checkbox {
+/* Folder label */
+.gc-task-card__folder {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: var(--gc-font-xs);
+	color: var(--text-muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 	flex-shrink: 0;
+	line-height: 1.2;
+}
+
+.gc-task-card__folder-icon {
+	font-size: 11px;
+	line-height: 1;
+	flex-shrink: 0;
+}
+
+.gc-task-card__folder-name {
+	font-weight: 500;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.gc-task-card--timeline .gc-task-card__folder {
+	font-size: 10px;
+	line-height: 1.2;
+	color: rgba(255, 255, 255, 0.95);
+	padding: 1px 5px;
+	background: rgba(0, 0, 0, 0.2);
+	border-radius: 4px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	flex-shrink: 0;
+}
+
+/* Kontrastowy checkbox dla wariantu timeline (Problem 2: Opcja 1 i 2) */
+.gc-task-card--timeline .gc-task-card__checkbox {
+	-webkit-appearance: none;
+	appearance: none;
+	width: 14px;
+	height: 14px;
+	min-width: 14px;
+	min-height: 14px;
+	border-radius: 50%;
+	border: 2px solid rgba(255, 255, 255, 0.92);
+	background: rgba(0, 0, 0, 0.3);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45), inset 0 1px 2px rgba(0, 0, 0, 0.3);
+	cursor: pointer;
+	margin: 1px 6px 0 0;
+	padding: 0;
+	flex-shrink: 0;
+	order: 1;
+	align-self: flex-start;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	position: relative;
+	transition: all 0.15s ease-in-out;
+	outline: none;
+	z-index: 2;
+}
+
+.gc-task-card--timeline .gc-task-card__checkbox:hover {
+	border-color: #ffffff;
+	background: rgba(255, 255, 255, 0.25);
+	box-shadow: 0 0 6px rgba(255, 255, 255, 0.8), 0 1px 4px rgba(0, 0, 0, 0.5);
+	transform: scale(1.12);
+}
+
+.gc-task-card--timeline .gc-task-card__checkbox:checked {
+	background-color: #ffffff;
+	border-color: #ffffff;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+.gc-task-card--timeline .gc-task-card__checkbox:checked::after {
+	content: '';
+	display: block;
+	width: 4px;
+	height: 7px;
+	border: solid #0f172a;
+	border-width: 0 2px 2px 0;
+	transform: rotate(45deg);
+	margin-bottom: 2px;
 }
 
 .gc-task-card--month {

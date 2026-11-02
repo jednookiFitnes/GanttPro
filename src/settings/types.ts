@@ -24,6 +24,8 @@ export interface GanttCalendarSettings {
 	globalTaskFilter: string;
 	enabledTaskFormats: string[];
 	showGlobalFilterInTaskText: boolean; // 是否在任务列表文本中显示 global filter 前缀
+	includeTaskFolders: string[]; // Foldery, z których taski mają być uwzględniane (pusta = wszystkie)
+	excludeTaskFolders: string[]; // Foldery, z których taski mają być ignorowane / wykluczone
 	dateFilterField: 'createdDate' | 'startDate' | 'scheduledDate' | 'dueDate' | 'completionDate' | 'cancelledDate'; // 日历视图的筛选字段，任务视图的初始字段
 	enableDailyNote: boolean; // 是否在日视图中显示 Daily Note
 	dayViewLayout: 'horizontal' | 'vertical'; // 日视图布局：水平（左右分屏）或垂直（上下分屏）
@@ -49,7 +51,7 @@ export interface GanttCalendarSettings {
 	timezoneOffset: number | null; // 时区偏移量（分钟），null 表示跟随系统
 	timeFormat: '24h' | '12h'; // 时间显示格式
 	recurringTaskDisplayLimit: number; // 周期任务虚拟实例显示数量上限
-	language: 'system' | 'en' | 'zh'; // 插件界面语言
+	language: 'system' | 'en' | 'zh' | 'pl'; // 插件界面语言
 
 	// ========== 持久化筛选和排序状态 ==========
 
@@ -85,6 +87,8 @@ export interface GanttCalendarSettings {
 	weekViewShowTags: boolean;
 	weekViewShowPriority: boolean;
 		weekViewShowTicktick: boolean;
+	weekViewShowFolder?: boolean;
+	weekViewCollapseEmptyWeekend?: boolean;
 
 	// MonthView 状态
 	monthViewSortField: SortField;
@@ -109,11 +113,20 @@ export interface GanttCalendarSettings {
 	sidebarShowTicktick: boolean;
 	sidebarShowFileLocation: boolean;
 	sidebarShowDueDate: boolean;
+	sidebarShowFolder?: boolean;
+	sidebarTimelineViewMode?: 'canvas' | 'agenda';
 
 	// ========== 甘特图设置 ==========
 
 	ganttStartField: DateFieldType;  // 甘特图开始时间字段
 	ganttEndField: DateFieldType;    // 甘特图结束时间字段
+	ganttGroupBy?: 'none' | 'folder' | 'priority'; // Tryb grupowania w widoku Gantta (none, folder, priority)
+	taskViewGroupBy?: 'none' | 'folder' | 'priority'; // Tryb grupowania w widoku zadań TaskView (none, folder, priority)
+	// ========== Urlopy i integracja z Timekeep ==========
+	vacationHighlightEnabled: boolean;
+	vacationTimekeepProject: string;
+	vacationTimekeepTypes: string;
+	vacationHighlightColor: string;
 
 	// ========== 同步设置 ==========
 	syncConfiguration?: SyncConfiguration;

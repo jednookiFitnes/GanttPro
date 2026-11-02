@@ -96,15 +96,17 @@ export function YearView(): JSX.Element {
 							{mc.days.map((day, i) => {
 								const key = `${(day.date).getFullYear()}-${String(day.date.getMonth() + 1).padStart(2, '0')}-${String(day.date.getDate()).padStart(2, '0')}`;
 								const count = data.get(key) || 0;
+								const vacation = plugin.vacationService?.getVacation(day.date);
 
 								const dayClasses = [YearViewClasses.elements.day];
-if (months.heatEnabled && count > 0) {
-								dayClasses.push(modClass(count));
-								if (months.heat3D === 1) dayClasses.push('heatmap-3d-1');
-								else if (months.heat3D === 2) dayClasses.push('heatmap-3d-2');
-							}
+								if (months.heatEnabled && count > 0) {
+									dayClasses.push(modClass(count));
+									if (months.heat3D === 1) dayClasses.push('heatmap-3d-1');
+									else if (months.heat3D === 2) dayClasses.push('heatmap-3d-2');
+								}
 								if (!day.isCurrentMonth) dayClasses.push('outside-month');
 								if (day.isToday) dayClasses.push('today');
+								if (vacation) dayClasses.push(YearViewClasses.modifiers.vacation);
 
 								const lunarStyle: CSSProperties | undefined = showLunar
 									? { fontSize: `${months.lunarFontSize}px` } : undefined;
@@ -114,6 +116,7 @@ if (months.heatEnabled && count > 0) {
 										key={i}
 										className={dayClasses.join(' ')}
 										data-date={key}
+										title={vacation ? `🏖️ URLOP: ${vacation.type}${vacation.project ? ` (${vacation.project})` : ''}` : undefined}
 										role="button"
 										tabIndex={0}
 										onKeyDown={(e) => {
@@ -131,7 +134,15 @@ if (months.heatEnabled && count > 0) {
 											setViewType('day');
 										}}
 									>
-										<div className={YearViewClasses.elements.dayNumber}>{day.day.toString()}</div>
+										<div className={`${YearViewClasses.elements.dayNumber}${vacation ? ` ${YearViewClasses.modifiers.dayNumberVacation}` : ''}`}>
+											{day.day.toString()}
+										</div>
+										{vacation ? (
+											<span
+												className={YearViewClasses.elements.vacationDot}
+												title={`🏖️ URLOP: ${vacation.type}`}
+											/>
+										) : null}
 										{day.lunarText && showLunar ? (
 											<div
 												className={`${YearViewClasses.elements.lunarText}${(day.festival || day.festivalType) && plugin.settings.showFestivals ? ` festival${day.festivalType ? ` festival-${day.festivalType}` : ''}` : ''}`}

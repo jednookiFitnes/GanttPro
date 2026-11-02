@@ -53,15 +53,16 @@ export class GanttChartAdapter {
 		this.endField = endField;
 		this.config = {
 			...config,
-			header_height: config.header_height ?? 50,
+			header_height: config.header_height ?? 76,
 			column_width: config.column_width ?? 50,
+			group_by: config.group_by ?? 'folder',
 			step: config.step ?? 24,
 			bar_height: config.bar_height ?? 24,
 			bar_corner_radius: config.bar_corner_radius ?? 4,
 			arrow_curve: config.arrow_curve ?? 5,
 			padding: config.padding ?? 18,
 			date_format: config.date_format ?? 'YYYY-MM-DD',
-			language: config.language ?? 'zh'
+			language: config.language ?? 'pl'
 		};
 	}
 
@@ -181,6 +182,14 @@ export class GanttChartAdapter {
 		if (this.renderer) {
 			this.renderer.updateTasks(ganttTasks);
 		}
+	}
+
+	/**
+	 * Aktualizuje pełny zbiór oryginalnych zadań (używany m.in. przy drop z sidebara)
+	 */
+	setOriginalTasks(tasks: GCTask[]): void {
+		this.originalTasks = tasks;
+		this.renderer?.setOriginalTasks(tasks);
 	}
 
 	/**

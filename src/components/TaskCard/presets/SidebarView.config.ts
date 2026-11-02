@@ -13,6 +13,7 @@ export function buildSidebarConfig(settings: GanttCalendarSettings): TaskCardCon
 		showTags: settings.sidebarShowTags,
 		showPriority: settings.sidebarShowPriority,
 		showFileLocation: settings.sidebarShowFileLocation,
+		showFolder: settings.sidebarShowFolder ?? true,
 		showWarning: false,
 		showTicktick: settings.sidebarShowTicktick,
 		showGlobalFilter: false,

@@ -18,6 +18,7 @@ import { SyncManagerBridge } from './src/managers/SyncManagerBridge';
 import { DailyNoteIndex } from './src/utils/dailyNoteSettingsBridge';
 import { initModalHost, destroyModalHost } from './src/ui/modals/modalHost';
 import { useCalendarStore } from './src/ui/store/calendarStore';
+import { TimekeepVacationService } from './src/utils/timekeepVacationService';
 
 /** 视图筛选变更写回 data.json 的防抖间隔（点击级频率，无需即时时效） */
 const VIEW_FILTERS_SAVE_DEBOUNCE_MS = 800;
@@ -25,6 +26,7 @@ const VIEW_FILTERS_SAVE_DEBOUNCE_MS = 800;
 export default class GanttCalendarPlugin extends Plugin {
 	settings: GanttCalendarSettings;
 	taskCache: TaskStore;
+	vacationService: TimekeepVacationService | null = null;
 	/** taskCache 初始化延迟句柄，onunload 时取消 */
 	private initTimeout: number | null = null;
 	/** store 订阅退订句柄，onunload 时取消 */
@@ -55,6 +57,15 @@ export default class GanttCalendarPlugin extends Plugin {
 		// 避免水合触发的首次 set 被当成变更写回）；
 		// 后续筛选变更经订阅防抖写回 data.json
 		useCalendarStore.getState().hydrateViewFilters(this.settings.viewFilters);
+		if (this.settings.ganttGroupBy) {
+			useCalendarStore.getState().setGanttGroupBy(this.settings.ganttGroupBy);
+		}
+		if (this.settings.taskViewGroupBy) {
+			useCalendarStore.getState().setTaskViewGroupBy(this.settings.taskViewGroupBy);
+		}
+		if (this.settings.sidebarTaskGroupBy) {
+			useCalendarStore.getState().setSidebarTaskGroupBy(this.settings.sidebarTaskGroupBy);
+		}
 		this.viewFiltersUnsubscribe = useCalendarStore.subscribe((state, prev) => {
 			if (state.viewFilters === prev.viewFilters) return;
 			this.settings.viewFilters = state.viewFilters;
@@ -99,13 +110,24 @@ export default class GanttCalendarPlugin extends Plugin {
 		// 全局 React Modal 宿主（设置面板等非 React 环境也需打开 React 模态框）
 		initModalHost();
 
-		// 启动时自动打开侧边栏
+		// Inicjalizacja serwisu urlopów z Timekeep
+		this.vacationService = new TimekeepVacationService(this.app, this);
+		void this.vacationService.loadVacations();
+
+		// 启动时自动打开侧边栏 oraz odśwież urlopy po załadowaniu layoutu
 		this.app.workspace.onLayoutReady(() => {
 			void activateSidebarView(this.app);
+			void this.vacationService?.loadVacations().then(() => {
+				this.refreshCalendarViews();
+			});
 		});
 	}
 
 	onunload() {
+		if (this.vacationService) {
+			this.vacationService.destroy();
+			this.vacationService = null;
+		}
 		// 取消尚未触发的初始化，防止卸载后对已销毁对象调用 initialize
 		if (this.initTimeout !== null) {
 			window.clearTimeout(this.initTimeout);
@@ -138,7 +160,9 @@ export default class GanttCalendarPlugin extends Plugin {
 		if (this.taskCache) {
 			await this.taskCache.updateSettings(
 				this.settings.globalTaskFilter,
-				this.settings.enabledTaskFormats
+				this.settings.enabledTaskFormats,
+				this.settings.includeTaskFolders,
+				this.settings.excludeTaskFolders
 			);
 		}
 		if (this.syncManagerBridge) {
@@ -234,7 +258,9 @@ export default class GanttCalendarPlugin extends Plugin {
 				this.initTimeout = null;
 				this.taskCache.initialize(
 					this.settings.globalTaskFilter,
-					this.settings.enabledTaskFormats
+					this.settings.enabledTaskFormats,
+					this.settings.includeTaskFolders,
+					this.settings.excludeTaskFolders
 				).then(async () => {
 					Logger.stats('Main', 'Task cache initialized');
 					this.refreshCalendarViews();
@@ -280,4 +306,99 @@ export default class GanttCalendarPlugin extends Plugin {
 		// 始终并列显示：任务统计 | 同步时间 | 同步状态
 		this.statusBarText.setText(` ${incomplete}/${total} | ${lastSync} | ${syncStatus}`);
 	}
+	/**
+	 * Umożliwia przeciąganie zadań z widoku notatki Markdown bezpośrednio do Daily Timeline
+	 */
+	private registerEditorTaskDrag(): void {
+		// Przy mousedown na checkboxie, znaczniku lub elemencie zadania włączamy draggable="true"
+		this.registerDomEvent(document, 'mousedown', (e: MouseEvent) => {
+			const target = e.target as HTMLElement;
+			if (!target) return;
+			const taskEl = target.closest('.task-list-item-checkbox') ||
+				target.closest('.cm-formatting-task') ||
+				target.closest('.cm-formatting-list') ||
+				target.closest('.task-list-item');
+			if (taskEl) {
+				taskEl.setAttribute('draggable', 'true');
+			}
+		}, true);
+
+		// Globalne przechwytywanie dragstart w edytorze
+		this.registerDomEvent(document, 'dragstart', (e: DragEvent) => {
+			const target = e.target as HTMLElement;
+			if (!target) return;
+
+			const editorEl = target.closest('.cm-editor') ||
+				target.closest('.markdown-source-view') ||
+				target.closest('.markdown-preview-view');
+			if (!editorEl) return;
+
+			let activeFile = this.app.workspace.getActiveFile();
+			let lineNumber: number | null = null;
+			let taskText = '';
+			let fullLineContent = '';
+
+			this.app.workspace.iterateAllLeaves((leaf) => {
+				if (leaf.view?.containerEl?.contains(target)) {
+					const v = leaf.view as any;
+					if (v?.file) activeFile = v.file;
+				}
+			});
+
+			const mdLeaves = this.app.workspace.getLeavesOfType('markdown');
+			const matchingLeaf = mdLeaves.find((l) => l.view?.containerEl?.contains(target));
+			const editor = (matchingLeaf?.view as any)?.editor;
+
+			if (editor) {
+				const cm = editor.cm;
+				if (cm && typeof cm.posAtDOM === 'function') {
+					try {
+						const pos = cm.posAtDOM(target);
+						const docLine = cm.state.doc.lineAt(pos);
+						lineNumber = docLine.number;
+						fullLineContent = docLine.text;
+					} catch (err) {}
+				}
+				if (!lineNumber) {
+					const cursor = editor.getCursor();
+					lineNumber = cursor.line + 1;
+					fullLineContent = editor.getLine(cursor.line);
+				}
+				const sel = editor.getSelection();
+				taskText = sel || fullLineContent || '';
+			}
+
+			if (!lineNumber) {
+				const lineEl = target.closest('[data-line]');
+				if (lineEl) {
+					const dl = lineEl.getAttribute('data-line');
+					if (dl) lineNumber = parseInt(dl, 10) + 1;
+				}
+			}
+
+			const isTask = /^(\s*[-*+]\s+\[[ xX\-/]\])/.test(taskText) ||
+				/^(\s*[-*+]\s+\[[ xX\-/]\])/.test(fullLineContent) ||
+				target.classList.contains('task-list-item-checkbox') ||
+				target.closest('.task-list-item') !== null;
+
+			if (activeFile && isTask) {
+				if (e.dataTransfer) {
+					if (lineNumber) {
+						e.dataTransfer.setData('taskId', `${activeFile.path}:${lineNumber}`);
+					}
+					e.dataTransfer.setData('text/plain', fullLineContent || taskText);
+					e.dataTransfer.effectAllowed = 'copyMove';
+				}
+			}
+		}, true);
+
+		const cleanupDraggable = () => {
+			document.querySelectorAll('[draggable="true"].task-list-item-checkbox, [draggable="true"].cm-formatting-task, [draggable="true"].cm-formatting-list, [draggable="true"].task-list-item').forEach((el) => {
+				el.removeAttribute('draggable');
+			});
+		};
+		this.registerDomEvent(document, 'dragend', cleanupDraggable, true);
+		this.registerDomEvent(document, 'mouseup', cleanupDraggable, true);
+	}
+
 }

@@ -67,6 +67,7 @@ export class SettingsManager {
 		activeDocument.documentElement.style.setProperty('--gc-festival-solar', settings.solarFestivalColor);
 		activeDocument.documentElement.style.setProperty('--gc-festival-lunar', settings.lunarFestivalColor);
 		activeDocument.documentElement.style.setProperty('--gc-festival-solar-term', settings.solarTermColor);
+		activeDocument.documentElement.style.setProperty('--gc-vacation-color', settings.vacationHighlightColor || '#f97316');
 	}
 
 	/**

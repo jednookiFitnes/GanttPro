@@ -29,6 +29,36 @@ import { solarToLunar, getShortLunarText } from '../lunar/lunar';
 import { getDaysInMonth, getFirstDayOfMonth } from '../dateUtils/format';
 import { getWeekNumber } from '../dateUtils/week';
 import { isToday } from '../dateUtils/dateCompare';
+import { isPolishLanguage, isChineseLanguage } from '../i18n/i18n';
+import { getPolishHoliday } from '../utils/holidaysPl';
+
+function getDayHolidayAndLunar(date: Date): {
+	lunarText?: string;
+	festival?: string;
+	festivalType?: 'solar' | 'lunar' | 'solarTerm';
+} {
+	if (isPolishLanguage()) {
+		const plHoliday = getPolishHoliday(date);
+		return {
+			lunarText: plHoliday || undefined,
+			festival: plHoliday || undefined,
+			festivalType: plHoliday ? 'solar' : undefined,
+		};
+	}
+	if (isChineseLanguage()) {
+		const lunarInfo = solarToLunar(date);
+		return {
+			lunarText: getShortLunarText(date),
+			festival: lunarInfo.festival,
+			festivalType: lunarInfo.festivalType,
+		};
+	}
+	return {
+		lunarText: undefined,
+		festival: undefined,
+		festivalType: undefined,
+	};
+}
 
 /**
  * Generate month calendar data with lunar information
@@ -49,32 +79,32 @@ export function generateMonthCalendar(year: number, month: number, startOnMonday
 	for (let i = leadDays - 1; i >= 0; i--) {
 		const day = daysInPrevMonth - i;
 		const date = new Date(prevYear, prevMonth - 1, day);
-		const lunarInfo = solarToLunar(date);
+		const dayInfo = getDayHolidayAndLunar(date);
 		days.push({
 			date,
 			day,
 			isCurrentMonth: false,
 			isToday: isToday(date),
 			weekday: date.getDay(),
-			lunarText: getShortLunarText(date),
-			festival: lunarInfo.festival,
-			festivalType: lunarInfo.festivalType,
+			lunarText: dayInfo.lunarText,
+			festival: dayInfo.festival,
+			festivalType: dayInfo.festivalType,
 		});
 	}
 
 	// Add current month days
 	for (let day = 1; day <= daysInMonth; day++) {
 		const date = new Date(year, month - 1, day);
-		const lunarInfo = solarToLunar(date);
+		const dayInfo = getDayHolidayAndLunar(date);
 		days.push({
 			date,
 			day,
 			isCurrentMonth: true,
 			isToday: isToday(date),
 			weekday: date.getDay(),
-			lunarText: getShortLunarText(date),
-			festival: lunarInfo.festival,
-			festivalType: lunarInfo.festivalType,
+			lunarText: dayInfo.lunarText,
+			festival: dayInfo.festival,
+			festivalType: dayInfo.festivalType,
 		});
 	}
 
@@ -85,16 +115,16 @@ export function generateMonthCalendar(year: number, month: number, startOnMonday
 
 	for (let day = 1; day <= remainingDays; day++) {
 		const date = new Date(nextYear, nextMonth - 1, day);
-		const lunarInfo = solarToLunar(date);
+		const dayInfo = getDayHolidayAndLunar(date);
 		days.push({
 			date,
 			day,
 			isCurrentMonth: false,
 			isToday: isToday(date),
 			weekday: date.getDay(),
-			lunarText: getShortLunarText(date),
-			festival: lunarInfo.festival,
-			festivalType: lunarInfo.festivalType,
+			lunarText: dayInfo.lunarText,
+			festival: dayInfo.festival,
+			festivalType: dayInfo.festivalType,
 		});
 	}
 

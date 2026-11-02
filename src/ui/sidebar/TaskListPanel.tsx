@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type JSX } from 'react';
-import type { GCTask, StatusFilterState } from '../../types';
+import { type GCTask, type StatusFilterState, getTaskDateField } from '../../types';
+import type { DateFieldType } from '../../settings/types';
 import { DEFAULT_STATUS_FILTER_STATE } from '../../types';
 import { SidebarClasses } from '../../utils/bem';
 import { buildSidebarConfig } from '../../components/TaskCard';
@@ -8,16 +9,18 @@ import { DEFAULT_TASK_STATUSES } from '../../tasks/taskStatus';
 import { isToday } from '../../dateUtils/dateCompare';
 import { isThisWeek } from '../../dateUtils/week';
 import { isThisMonth } from '../../dateUtils/dateCompare';
-import { i18n } from '../../i18n/i18n';
+import { i18n, isChineseLanguage, isPolishLanguage } from '../../i18n/i18n';
 import { TagTreeFilter } from '../components/TagTreeFilter';
 import { usePlugin } from '../pluginContext';
 import { useCalendarStore } from '../store/calendarStore';
 import { TaskCard } from '../components/TaskCard';
 import { DropdownMenu, type DropdownMenuSection } from '../components/DropdownMenu';
 import { Icon } from '../components/Icon';
+import { groupTasks } from '../../tasks/taskGrouper';
 
 type PriorityFilter = 'all' | 'highest' | 'high' | 'medium' | 'normal' | 'low' | 'lowest';
 type DateFilter = 'all' | 'today' | 'week' | 'month';
+export type GanttFilter = 'all' | 'not-in-gantt' | 'in-gantt';
 type SortField = 'priority' | 'dueDate' | 'startDate';
 type SortOrder = 'asc' | 'desc';
 
@@ -51,6 +54,44 @@ function getDateOptions(): Array<{ key: DateFilter; label: string; icon: string 
 	];
 }
 
+function getGanttOptions(): Array<{ key: GanttFilter; label: string; icon: string }> {
+	const isPl = isPolishLanguage();
+	const isZh = isChineseLanguage();
+	if (isPl) {
+		return [
+			{ key: 'all', label: 'Wszystkie zadania', icon: 'infinity' },
+			{ key: 'not-in-gantt', label: 'Poza Ganttem (brak start/due)', icon: 'calendar-x' },
+			{ key: 'in-gantt', label: 'W tablicy Gantt (start i due)', icon: 'chart-gantt' },
+		];
+	}
+	if (isZh) {
+		return [
+			{ key: 'all', label: i18n.t('sidebar.taskList.ganttFilterOptions.all'), icon: 'infinity' },
+			{ key: 'not-in-gantt', label: i18n.t('sidebar.taskList.ganttFilterOptions.notInGantt'), icon: 'calendar-x' },
+			{ key: 'in-gantt', label: i18n.t('sidebar.taskList.ganttFilterOptions.inGantt'), icon: 'chart-gantt' },
+		];
+	}
+	return [
+		{ key: 'all', label: i18n.t('sidebar.taskList.ganttFilterOptions.all'), icon: 'infinity' },
+		{ key: 'not-in-gantt', label: i18n.t('sidebar.taskList.ganttFilterOptions.notInGantt'), icon: 'calendar-x' },
+		{ key: 'in-gantt', label: i18n.t('sidebar.taskList.ganttFilterOptions.inGantt'), icon: 'chart-gantt' },
+	];
+}
+
+export function hasGanttDates(
+	task: GCTask,
+	startField: DateFieldType = 'startDate',
+	endField: DateFieldType = 'dueDate'
+): boolean {
+	const startVal = getTaskDateField(task, startField) || task.startDate;
+	const endVal = getTaskDateField(task, endField) || task.dueDate;
+
+	const hasValidStart = startVal instanceof Date ? !isNaN(startVal.getTime()) : Boolean(startVal && !isNaN(new Date(startVal as string).getTime()));
+	const hasValidEnd = endVal instanceof Date ? !isNaN(endVal.getTime()) : Boolean(endVal && !isNaN(new Date(endVal as string).getTime()));
+
+	return hasValidStart && hasValidEnd;
+}
+
 function inferStatus(task: GCTask): string {
 	if (task.status) return task.status;
 	if (task.completed) return 'done';
@@ -58,13 +99,16 @@ function inferStatus(task: GCTask): string {
 	return 'todo';
 }
 
-function filterTasks(
+export function filterTasks(
 	tasks: GCTask[],
 	statusFilter: StatusFilterState,
 	priorityFilter: PriorityFilter,
 	selectedTags: string[],
 	tagOperator: 'OR' | 'AND',
-	dateFilter: DateFilter
+	dateFilter: DateFilter,
+	ganttFilter: GanttFilter = 'all',
+	startField: DateFieldType = 'startDate',
+	endField: DateFieldType = 'dueDate'
 ): GCTask[] {
 	let result = tasks;
 
@@ -98,6 +142,12 @@ function filterTasks(
 			const dates = [t.dueDate, t.scheduledDate, t.startDate, t.createdDate, t.completionDate];
 			return dates.some(d => d && matchFn(d));
 		});
+	}
+
+	if (ganttFilter === 'not-in-gantt') {
+		result = result.filter(t => !hasGanttDates(t, startField, endField));
+	} else if (ganttFilter === 'in-gantt') {
+		result = result.filter(t => hasGanttDates(t, startField, endField));
 	}
 
 	const showCompleted = statusFilter.selectedStatuses.includes('done');
@@ -135,8 +185,28 @@ export function TaskListPanel(): JSX.Element {
 	const [selectedTags, setSelectedTags] = useState<string[]>([]);
 	const [tagOperator, setTagOperator] = useState<'OR' | 'AND' | 'NOT'>('OR');
 	const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+	const [ganttFilter, setGanttFilter] = useState<GanttFilter>('all');
 	const [sortBy, setSortBy] = useState<SortField>('dueDate');
 	const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
+	const sidebarTaskGroupBy = useCalendarStore((s) => s.sidebarTaskGroupBy);
+	const setSidebarTaskGroupBy = useCalendarStore((s) => s.setSidebarTaskGroupBy);
+	const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+	const startField = plugin.settings.ganttStartField || 'startDate';
+	const endField = plugin.settings.ganttEndField || 'dueDate';
+	const isPl = isPolishLanguage();
+
+	const toggleGroup = (groupId: string) => {
+		setCollapsedGroups((prev) => {
+			const next = new Set(prev);
+			if (next.has(groupId)) {
+				next.delete(groupId);
+			} else {
+				next.add(groupId);
+			}
+			return next;
+		});
+	};
 
 	// 搜索防抖
 	useEffect(() => {
@@ -161,7 +231,17 @@ export function TaskListPanel(): JSX.Element {
 
 	// 排序任务
 	const sortedTasks = useMemo(() => {
-		let result = filterTasks(tasks, statusFilter, priorityFilter, selectedTags, tagOperator === 'NOT' ? 'AND' : tagOperator, dateFilter);
+		let result = filterTasks(
+			tasks,
+			statusFilter,
+			priorityFilter,
+			selectedTags,
+			tagOperator === 'NOT' ? 'AND' : tagOperator,
+			dateFilter,
+			ganttFilter,
+			startField,
+			endField
+		);
 
 		if (debouncedQuery) {
 			result = result.filter(t =>
@@ -174,13 +254,17 @@ export function TaskListPanel(): JSX.Element {
 			: sortBy === 'dueDate' ? 'dueDate' as const
 			: 'startDate' as const;
 		return sortTasks(result, { field, order: sortOrder });
-	}, [tasks, statusFilter, priorityFilter, selectedTags, tagOperator, dateFilter, debouncedQuery, sortBy, sortOrder]);
+	}, [tasks, statusFilter, priorityFilter, selectedTags, tagOperator, dateFilter, ganttFilter, debouncedQuery, sortBy, sortOrder, startField, endField]);
 
-	const config = useMemo(() => buildSidebarConfig(plugin.settings), [plugin.settings]);
+	const config = useMemo(() => ({
+		...buildSidebarConfig(plugin.settings),
+		showFolder: (plugin.settings.sidebarShowFolder ?? true) && sidebarTaskGroupBy !== 'folder',
+	}), [plugin.settings, sidebarTaskGroupBy]);
 
 	const hasStatusFilter = statusFilter.selectedStatuses.length > 0;
 	const hasTagFilter = selectedTags.length > 0;
 	const hasDateFilter = dateFilter !== 'all';
+	const hasGanttFilter = ganttFilter !== 'all';
 
 	// 状态筛选菜单
 	const statusSections: DropdownMenuSection[] = useMemo(() => [{
@@ -242,6 +326,58 @@ export function TaskListPanel(): JSX.Element {
 		})),
 	}], [dateFilter]);
 
+	// 甘特图排期状态筛选菜单
+	const ganttSections: DropdownMenuSection[] = useMemo(() => [{
+		items: getGanttOptions().map((opt) => ({
+			key: `gantt-${opt.key}`,
+			title: opt.label,
+			icon: opt.icon,
+			checked: ganttFilter === opt.key,
+			onClick: () => setGanttFilter(opt.key),
+		})),
+	}], [ganttFilter]);
+
+	// Grupowanie zadań w panelu bocznym
+	const groupSections: DropdownMenuSection[] = useMemo(() => [{
+		items: [
+			{
+				key: 'group-folder',
+				title: '📁 Wg folderu',
+				checked: sidebarTaskGroupBy === 'folder',
+				onClick: () => {
+					setSidebarTaskGroupBy('folder');
+					plugin.settings.sidebarTaskGroupBy = 'folder';
+					void plugin.saveSettings();
+				},
+			},
+			{
+				key: 'group-priority',
+				title: '🔺 Wg priorytetu',
+				checked: sidebarTaskGroupBy === 'priority',
+				onClick: () => {
+					setSidebarTaskGroupBy('priority');
+					plugin.settings.sidebarTaskGroupBy = 'priority';
+					void plugin.saveSettings();
+				},
+			},
+			{
+				key: 'group-none',
+				title: 'Brak (płaska lista)',
+				checked: sidebarTaskGroupBy === 'none',
+				onClick: () => {
+					setSidebarTaskGroupBy('none');
+					plugin.settings.sidebarTaskGroupBy = 'none';
+					void plugin.saveSettings();
+				},
+			},
+		],
+	}], [sidebarTaskGroupBy, plugin]);
+
+	const groupedTasks = useMemo(() => {
+		if (sidebarTaskGroupBy === 'none') return [];
+		return groupTasks(sortedTasks, sidebarTaskGroupBy);
+	}, [sortedTasks, sidebarTaskGroupBy]);
+
 	// 标签筛选菜单内容（共享 TagTreeFilter 组件）
 
 	return (
@@ -256,6 +392,18 @@ export function TaskListPanel(): JSX.Element {
 			</div>
 
 			<div className={SidebarClasses.elements.filterBar}>
+				<DropdownMenu sections={groupSections} align="left" className="gc-u-pointer" panelStyle={{ width: '160px' }}>
+					{({ onClick }) => (
+						<button
+							className={`clickable-icon${sidebarTaskGroupBy !== 'none' ? ' has-active-filter' : ''}`}
+							title="Grupowanie zadań (folder / priorytet)"
+							onClick={onClick}
+						>
+							<Icon icon="folder-tree" />
+						</button>
+					)}
+				</DropdownMenu>
+
 				<DropdownMenu sections={statusSections} align="left" className="gc-u-pointer" panelStyle={{ width: '160px' }}>
 					{({ onClick }) => (
 						<button
@@ -330,6 +478,18 @@ export function TaskListPanel(): JSX.Element {
 						</button>
 					)}
 				</DropdownMenu>
+
+				<DropdownMenu sections={ganttSections} align="left" className="gc-u-pointer" panelStyle={{ width: '220px' }}>
+					{({ onClick }) => (
+						<button
+							className={`clickable-icon${hasGanttFilter ? ' has-active-filter' : ''}`}
+							title={isPl ? 'Filtruj wg obecności w Gantt (start i due date)' : i18n.t('sidebar.taskList.filterBar.ganttFilter')}
+							onClick={onClick}
+						>
+							<Icon icon="chart-gantt" />
+						</button>
+					)}
+				</DropdownMenu>
 			</div>
 
 			<div className={SidebarClasses.elements.taskList}>
@@ -337,7 +497,7 @@ export function TaskListPanel(): JSX.Element {
 					<div className={SidebarClasses.elements.emptyState}>
 						{debouncedQuery ? i18n.t('sidebar.taskList.noMatchingTasks') : i18n.t('sidebar.taskList.noTasks')}
 					</div>
-				) : (
+				) : sidebarTaskGroupBy === 'none' ? (
 					sortedTasks.map((task) => (
 						<TaskCard
 							key={`${task.filePath}:${task.lineNumber}`}
@@ -345,6 +505,37 @@ export function TaskListPanel(): JSX.Element {
 							config={config}
 						/>
 					))
+				) : (
+					groupedTasks.map((group) => {
+						const isCollapsed = collapsedGroups.has(group.id);
+						return (
+							<div key={group.id} className="gc-sidebar-task-group">
+								<div
+									className="gc-sidebar-group-header"
+									onClick={() => toggleGroup(group.id)}
+									role="button"
+									tabIndex={0}
+									title={group.fullPath ? `Ścieżka: ${group.fullPath}` : undefined}
+								>
+									<span className="gc-sidebar-group-toggle">{isCollapsed ? '▸' : '▾'}</span>
+									<span className="gc-sidebar-group-icon" style={group.badgeColor ? { color: group.badgeColor } : undefined}>{group.icon}</span>
+									<span className="gc-sidebar-group-title">{group.title}</span>
+									<span className="gc-sidebar-group-count">{group.count}</span>
+								</div>
+								{!isCollapsed && (
+									<div className="gc-sidebar-group-tasks">
+										{group.tasks.map((task) => (
+											<TaskCard
+												key={`${task.filePath}:${task.lineNumber}`}
+												task={task}
+												config={config}
+											/>
+										))}
+									</div>
+								)}
+							</div>
+						);
+					})
 				)}
 			</div>
 		</>

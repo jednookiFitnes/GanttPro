@@ -19,6 +19,7 @@ export interface CanvasTouchDragDeps {
 	setPreview: (p: { dayIndex: number; startMin: number; endMin: number } | null) => void;
 	/** 落点列的容器选择器（含 data-day-idx 属性） */
 	columnSelector: string;
+	startMin?: number;
 }
 
 interface PressState {
@@ -82,7 +83,8 @@ export function useCanvasTouchDrag(deps: CanvasTouchDragDeps) {
 		const dayIndex = Number(hit.dataset.dayIdx);
 		if (Number.isNaN(dayIndex)) { p.landing = null; return; }
 		const rect = hit.getBoundingClientRect();
-		const topMin = snapMinutes(pxToMinutes(ev.clientY - p.offsetPx - rect.top), false);
+		const originMin = depsRef.current.startMin ?? 0;
+		const topMin = snapMinutes(originMin + pxToMinutes(ev.clientY - p.offsetPx - rect.top), false);
 		p.landing = { dayIndex, topMin };
 		depsRef.current.setPreview({ dayIndex, startMin: topMin, endMin: Math.min(topMin + p.durationMin, 24 * 60) });
 	}, [cleanup]);

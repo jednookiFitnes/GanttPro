@@ -17,6 +17,8 @@ export const DEFAULT_SETTINGS: GanttCalendarSettings = {
 	globalTaskFilter: '🎯 ',        // 全局任务筛选标记
 	enabledTaskFormats: ['tasks'], // 启用的任务格式
 	showGlobalFilterInTaskText: true, // 默认显示 global filter
+	includeTaskFolders: [],        // 默认不过滤文件夹（包含全部）
+	excludeTaskFolders: [],        // 默认不排除任何文件夹
 	dateFilterField: 'dueDate', // 默认使用截止日期作为筛选字段
 	enableDailyNote: true, // 默认在日视图中显示 Daily Note
 	dayViewLayout: 'horizontal', // 默认水平（左右分屏）布局
@@ -32,7 +34,7 @@ export const DEFAULT_SETTINGS: GanttCalendarSettings = {
 	taskStatuses: [...DEFAULT_TASK_STATUSES, ...PRESET_CUSTOM_STATUSES], // 默认任务状态 + 预设自定义状态
 	taskSortField: 'dueDate', // 默认排序字段：截止日期
 	taskSortOrder: 'asc', // 默认排序顺序：升序
-	defaultView: 'month', // 默认视图：月视图
+	defaultView: 'gantt', // Domyślny widok: Gantt View
 	newTaskHeading: undefined, // 默认添加到文件末尾
 	dailyNoteTemplatePath: '',
 	defaultTaskPriority: 'medium', // 默认中等优先级
@@ -77,6 +79,8 @@ export const DEFAULT_SETTINGS: GanttCalendarSettings = {
 	weekViewShowTags: false,
 	weekViewShowPriority: false,
 	weekViewShowTicktick: false,
+	weekViewShowFolder: true,
+	weekViewCollapseEmptyWeekend: true,
 
 	// MonthView
 	monthViewSortField: 'dueDate',
@@ -97,6 +101,8 @@ export const DEFAULT_SETTINGS: GanttCalendarSettings = {
 	sidebarShowTicktick: false,
 	sidebarShowFileLocation: false,
 	sidebarShowDueDate: false,
+	sidebarShowFolder: true,
+	sidebarTimelineViewMode: 'canvas',
 
 	// YearView
 	yearViewSelectedTags: [],
@@ -106,6 +112,15 @@ export const DEFAULT_SETTINGS: GanttCalendarSettings = {
 
 	ganttStartField: 'startDate',  // 默认使用开始日期
 	ganttEndField: 'dueDate',      // 默认使用截止日期
+	ganttGroupBy: 'folder',        // Domyślnie grupowanie po folderach
+	taskViewGroupBy: 'folder',     // Domyślnie grupowanie po folderach w widoku zadań
+	sidebarTaskGroupBy: 'folder',  // Domyślnie grupowanie po folderach w panelu bocznym
+
+	// ========== Urlopy i integracja z Timekeep ==========
+	vacationHighlightEnabled: true,
+	vacationTimekeepProject: '99-001 - NIEOBECNOŚCI',
+	vacationTimekeepTypes: 'U_W - urlop wypoczynkowy',
+	vacationHighlightColor: '#f97316',
 };
 
 /**

@@ -49,7 +49,7 @@ export class GCMainView extends ItemView {
 		// 初始化 store：使用设置中的默认视图 + 时区感知的"今天"；
 		// 任务经 setTasks 写入以便触发幽灵标签剔除（见 calendarStore.pruneTagFilters）
 		useCalendarStore.setState({
-			viewType: this.plugin.settings.defaultView || 'year',
+			viewType: this.plugin.settings.defaultView || 'gantt',
 			currentDate: getTodayInTimezone(),
 		});
 		useCalendarStore.getState().setTasks(this.plugin.taskCache?.getAllTasks() || []);
