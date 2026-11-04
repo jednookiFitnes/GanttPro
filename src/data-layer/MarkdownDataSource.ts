@@ -763,7 +763,9 @@ export class MarkdownDataSource implements IDataSource {
 			if (!newIdMap.has(id)) {
 				// 删除的任务没有完整对象，只能返回ID
 				// 这里我们需要返回一个占位任务对象
-				const [filePath, lineNumber] = id.split(':');
+				const lastColon = id.lastIndexOf(':');
+				const filePath = lastColon !== -1 ? id.slice(0, lastColon) : id;
+				const lineNumber = lastColon !== -1 ? parseInt(id.slice(lastColon + 1), 10) : 0;
 				changes.deleted.push({
 					filePath,
 					lineNumber: parseInt(lineNumber),

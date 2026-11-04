@@ -195,7 +195,21 @@ export class TaskRepository {
 			// 优先使用完整的新任务对象（如果提供）
 			if (newTask) {
 				updatedTask = newTask;
-				this.taskCache.set(id, newTask);
+				const newId = generateTaskId(newTask);
+				if (id !== newId) {
+					// 任务行号漂移或ID变化时，清理旧ID，防止僵尸旧任务残留在缓存中
+					this.taskCache.delete(id);
+					if (newTask.filePath) {
+						this.fileIndex.get(newTask.filePath)?.delete(id);
+					}
+				}
+				this.taskCache.set(newId, newTask);
+				if (newTask.filePath) {
+					if (!this.fileIndex.has(newTask.filePath)) {
+						this.fileIndex.set(newTask.filePath, new Set());
+					}
+					this.fileIndex.get(newTask.filePath)!.add(newId);
+				}
 			} else {
 				// 否则使用增量更新
 				const task = this.taskCache.get(id);

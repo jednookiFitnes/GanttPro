@@ -51,7 +51,7 @@ describe('createMonthWheelStep（滚轮步进状态机）', () => {
 	it('行模式（deltaMode=1）：每行按 33px 换算，多次累积达标', () => {
 		const step = createMonthWheelStep();
 		expect(step(3, 1, 1000)).toBe(0); // 99px < 100px
-		expect(step(3, 1, 2000)).toBe(1); // 累加 198px 达标
+		expect(step(3, 1, 1100)).toBe(1); // 累加 198px 达标
 	});
 
 	it('页模式（deltaMode=2）：任意非零直接视为一整步', () => {

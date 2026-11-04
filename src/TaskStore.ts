@@ -271,13 +271,26 @@ export class TaskStore {
 			this.checkDuplicates(allTasks);
 		}
 
-		this.cachedTasks = allTasks;
+		// 防御性去重：确保同一文件同一行号的任务绝对不重复出现
+		const seenKeys = new Set<string>();
+		const deduplicatedTasks: GCTask[] = [];
+		for (const task of allTasks) {
+			const key = `${task.filePath}:${task.lineNumber}`;
+			if (!seenKeys.has(key)) {
+				seenKeys.add(key);
+				deduplicatedTasks.push(task);
+			} else {
+				Logger.warn('TaskStore', `Filtered out duplicate task at ${key}: "${task.content}"`);
+			}
+		}
+
+		this.cachedTasks = deduplicatedTasks;
 		this.cacheValid = true;
 
 		const elapsed = performance.now() - startTime;
-		Logger.debug('TaskStore', `Cache rebuilt in ${elapsed.toFixed(2)}ms (${allTasks.length} tasks)`);
+		Logger.debug('TaskStore', `Cache rebuilt in ${elapsed.toFixed(2)}ms (${deduplicatedTasks.length} tasks)`);
 
-		return allTasks;
+		return deduplicatedTasks;
 	}
 
 	/**

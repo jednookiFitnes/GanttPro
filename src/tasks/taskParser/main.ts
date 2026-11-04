@@ -11,6 +11,7 @@
 import { TFile, ListItemCache } from 'obsidian';
 import type { GCTask } from '../../types';
 import type { TaskFormatType } from '../taskSerializerSymbols';
+import { isPolishLanguage, isChineseLanguage } from '../../i18n/i18n';
 
 /**
  * 任务解析所需的文件元信息（结构子类型）。

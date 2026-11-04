@@ -89,9 +89,12 @@ export function ToolbarBar(): JSX.Element {
 
 	// ===== 刷新 =====
 	const handleRefresh = async () => {
+		plugin.taskCache.clear();
 		await plugin.taskCache.initialize(
 			plugin.settings.globalTaskFilter,
-			plugin.settings.enabledTaskFormats
+			plugin.settings.enabledTaskFormats,
+			plugin.settings.includeTaskFolders,
+			plugin.settings.excludeTaskFolders
 		);
 		setTasks(plugin.taskCache.getAllTasks());
 	};
