@@ -128,6 +128,10 @@ export interface GanttCalendarSettings {
 	vacationTimekeepTypes: string;
 	vacationHighlightColor: string;
 
+	// ========== Projekty i zadania projektowe ==========
+	projectsFolderPath?: string;
+	projectTasksFileName?: string;
+
 	// ========== 同步设置 ==========
 	syncConfiguration?: SyncConfiguration;
 

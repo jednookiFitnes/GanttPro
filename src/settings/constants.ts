@@ -121,6 +121,10 @@ export const DEFAULT_SETTINGS: GanttCalendarSettings = {
 	vacationTimekeepProject: '99-001 - NIEOBECNOŚCI',
 	vacationTimekeepTypes: 'U_W - urlop wypoczynkowy',
 	vacationHighlightColor: '#f97316',
+
+	// ========== Projekty i zadania projektowe ==========
+	projectsFolderPath: '11 - Notes - Trinitec Projekty',
+	projectTasksFileName: '_tasks',
 };
 
 /**

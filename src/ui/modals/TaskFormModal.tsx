@@ -1,13 +1,15 @@
 import { useCallback,  useEffect, useMemo, useRef, useState, type JSX  } from 'react';
 import { Notice } from 'obsidian';
-import type { App } from 'obsidian';
+import type { App, TFolder } from 'obsidian';
 import type { GCTask, IPluginContext } from '../../types';
 import type { CreateTaskData } from '../../utils/dailyNoteHelper';
 import { createTaskInDailyNote } from '../../utils/dailyNoteHelper';
 import type { TaskUpdates } from '../../tasks/taskSerializer';
 import { updateTaskProperties } from '../../tasks/taskUpdater';
 import { Logger } from '../../utils/logger';
-import { i18n } from '../../i18n/i18n';
+import { i18n, isPolishLanguage, isChineseLanguage } from '../../i18n/i18n';
+import { ProjectSelectorFormField } from '../components/ProjectSelectorDropdown';
+import { createTaskInProject } from '../../tasks/taskProjectMover';
 import { EditTaskModalClasses } from '../../utils/bem';
 import { Modal } from '../components/Modal';
 import { TagSelector } from './TagSelector';
@@ -170,6 +172,7 @@ export function TaskFormModal({
 	const [selectedTags, setSelectedTags] = useState<string[]>(mode === 'edit' ? (task?.tags || []) : []);
 	const [description, setDescription] = useState(mode === 'edit' ? (task?.description || '') : '');
 	const descriptionRef = useRef<HTMLTextAreaElement | null>(null);
+	const [selectedProjectFolder, setSelectedProjectFolder] = useState<TFolder | null>(null);
 
 	// 编辑模式：变更跟踪
 	const [priorityChanged, setPriorityChanged] = useState(false);
@@ -230,7 +233,12 @@ export function TaskFormModal({
 					tags: selectedTags.length > 0 ? selectedTags : undefined,
 					datePrecision: Object.keys(datePrecision).length > 0 ? datePrecision : undefined,
 				};
-				const targetFilePath = await createTaskInDailyNote(app, taskData, plugin.settings, plugin.dailyNoteIndex);
+				let targetFilePath: string | null = null;
+				if (selectedProjectFolder) {
+					targetFilePath = await createTaskInProject(app, taskData, plugin.settings, selectedProjectFolder);
+				} else {
+					targetFilePath = await createTaskInDailyNote(app, taskData, plugin.settings, plugin.dailyNoteIndex);
+				}
 				// 写回后立即刷新缓存并推送数据，跳过文件事件防抖回流
 				if (targetFilePath && plugin.taskCache) {
 					await plugin.taskCache.refreshFile(targetFilePath);
@@ -310,6 +318,21 @@ export function TaskFormModal({
 			<div className={EditTaskModalClasses.block}>
 				{/* 滚动容器 */}
 				<div className={EditTaskModalClasses.elements.scrollContainer}>
+					{/* 0. Wybór projektu (nad opisem zadania) */}
+					{!isEdit ? (
+						<div className={EditTaskModalClasses.elements.section} style={{ marginBottom: '16px' }}>
+							<label className={EditTaskModalClasses.elements.sectionLabel}>
+								{isPolishLanguage() ? 'Projekt' : (isChineseLanguage() ? '项目' : 'Project')}
+							</label>
+							<ProjectSelectorFormField
+								app={app}
+								projectsFolderPath={plugin?.settings.projectsFolderPath}
+								selectedFolder={selectedProjectFolder}
+								onSelect={setSelectedProjectFolder}
+							/>
+						</div>
+					) : null}
+
 					{/* 1. 任务描述板块（编辑模式仅在允许时显示） */}
 					{!isEdit || allowEditContent ? (
 						<div className={EditTaskModalClasses.elements.section}>

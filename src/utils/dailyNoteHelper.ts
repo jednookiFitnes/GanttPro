@@ -308,7 +308,7 @@ async function insertTaskToFile(
 /**
  * 序列化新任务为文本行
  */
-function serializeNewTask(taskData: CreateTaskData, app: App): string {
+export function serializeNewTask(taskData: CreateTaskData, app: App): string {
 	// Access Obsidian internal plugin API (not in public types)
 	const plugin = (app as unknown as Record<string, Record<string, Record<string, unknown>>>).plugins.plugins['gantt-calendar'] as Record<string, unknown> | undefined;
 	const settings = plugin?.settings as Record<string, unknown> | undefined;

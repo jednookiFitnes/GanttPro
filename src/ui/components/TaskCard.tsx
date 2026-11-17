@@ -1,4 +1,5 @@
-import { memo, useMemo, type CSSProperties, type JSX } from 'react';
+import { memo, useMemo, useState, useCallback, type CSSProperties, type JSX, type MouseEvent as ReactMouseEvent } from 'react';
+import type { TFolder } from 'obsidian';
 import type { GCTask } from '../../types';
 import type { TaskCardConfig } from '../../components/TaskCard/TaskCardConfig';
 import { TaskCardClasses, TimeBadgeClasses } from '../../utils/bem';
@@ -21,6 +22,8 @@ import { buildTaskContextMenuSections } from './taskContextMenu';
 import { i18n } from '../../i18n/i18n';
 import { Logger } from '../../utils/logger';
 import { extractFolderName, extractFullFolderPath, getPriorityBarColor } from '../../tasks/taskGrouper';
+import { moveTaskToProject } from '../../tasks/taskProjectMover';
+import { ProjectSelectorPopover } from './ProjectSelectorDropdown';
 
 export interface ReactTaskCardProps {
 	task: GCTask;
@@ -67,6 +70,7 @@ export const TaskCard = memo(function TaskCard({ task, config, targetDate, onCli
 	const app = useApp();
 	const virtual = isVirtualTask(task);
 	const tooltip = useTaskTooltip();
+	const [projectPopoverAnchor, setProjectPopoverAnchor] = useState<DOMRect | null>(null);
 
 	// ===== 类名组装 =====
 	const classes = useMemo(() => {
@@ -192,6 +196,19 @@ export const TaskCard = memo(function TaskCard({ task, config, targetDate, onCli
 		})();
 	};
 
+	// ===== Pigułka projektu i przenoszenie zadań =====
+	const handleFolderClick = useCallback((e: ReactMouseEvent) => {
+		e.stopPropagation();
+		e.preventDefault();
+		if (virtual) return;
+		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		setProjectPopoverAnchor(rect);
+	}, [virtual]);
+
+	const handleProjectSelect = useCallback((targetFolder: TFolder) => {
+		void moveTaskToProject(app, plugin, task, targetFolder, onRefresh);
+	}, [app, plugin, task, onRefresh]);
+
 	// ===== 子元素 =====
 	const metadataBlock = task.metadataFields && task.metadataFields.length > 0 ? (
 		<div className={TaskCardClasses.elements.metadata}>
@@ -253,19 +270,26 @@ export const TaskCard = memo(function TaskCard({ task, config, targetDate, onCli
 	const folder = useMemo(() => {
 		if (!config.showFolder) return null;
 		const folderName = extractFolderName(task.filePath);
-		if (!folderName || folderName === 'Bez przypisania' || folderName === 'Katalog główny') {
-			return null;
-		}
+		const isUnassigned = !folderName || folderName === 'Bez przypisania' || folderName === 'Katalog główny';
+
+		const label = isUnassigned ? '+ Przypisz projekt' : folderName;
+		const fullPath = isUnassigned ? 'Brak przypisanego projektu' : extractFullFolderPath(task.filePath);
+		const folderCls = [
+			TaskCardClasses.elements.folder,
+			...(isUnassigned ? [TaskCardClasses.modifiers.folderUnassigned] : []),
+		].join(' ');
+
 		return (
 			<span
-				className={TaskCardClasses.elements.folder}
-				title={`Folder: ${extractFullFolderPath(task.filePath)}`}
+				className={folderCls}
+				title={`Folder: ${fullPath} (Kliknij, aby przypisać/zmienić projekt)`}
+				onClick={handleFolderClick}
 			>
 				<span className={TaskCardClasses.elements.folderIcon}>📁</span>
-				<span className={TaskCardClasses.elements.folderName}>{folderName}</span>
+				<span className={TaskCardClasses.elements.folderName}>{label}</span>
 			</span>
 		);
-	}, [config.showFolder, task.filePath]);
+	}, [config.showFolder, task.filePath, handleFolderClick]);
 
 	const fileLocation = config.showFileLocation ? (
 		<span className={TaskCardClasses.elements.file}>{`${task.fileName}:${task.lineNumber}`}</span>
@@ -286,8 +310,11 @@ export const TaskCard = memo(function TaskCard({ task, config, targetDate, onCli
 			data-task-id={dragProps['data-task-id']}
 			data-target-date={config.enableDrag && targetDate ? toISOStringLocal(targetDate) : undefined}
 			onClick={(e) => {
-				// 点击复选框不触发打开任务文件
+				// Kliknięcie w checkbox lub pigułkę folderu nie otwiera pliku ani modala
 				if ((e.target as HTMLElement).tagName === 'INPUT' && (e.target as HTMLInputElement).type === 'checkbox') {
+					return;
+				}
+				if ((e.target as HTMLElement).closest(`.${TaskCardClasses.elements.folder}`)) {
 					return;
 				}
 				handleClick();
@@ -340,13 +367,24 @@ export const TaskCard = memo(function TaskCard({ task, config, targetDate, onCli
 		</div>
 	);
 
-	// 虚拟任务无右键菜单，直接渲染
-	if (virtual) return cardContent;
-
 	return (
-		<ContextMenuTrigger sections={menuSections} longPressDisabled={disableLongPressMenu}>
-			{cardContent}
-		</ContextMenuTrigger>
+		<>
+			{virtual ? (
+				cardContent
+			) : (
+				<ContextMenuTrigger sections={menuSections} longPressDisabled={disableLongPressMenu}>
+					{cardContent}
+				</ContextMenuTrigger>
+			)}
+			<ProjectSelectorPopover
+				app={app}
+				projectsFolderPath={plugin.settings?.projectsFolderPath}
+				currentFolderPath={task.filePath}
+				anchorRect={projectPopoverAnchor}
+				open={Boolean(projectPopoverAnchor)}
+				onClose={() => setProjectPopoverAnchor(null)}
+				onSelect={handleProjectSelect}
+			/>
+		</>
 	);
 });
-

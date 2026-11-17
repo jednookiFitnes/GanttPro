@@ -2,7 +2,7 @@ import { Setting } from 'obsidian';
 import { BaseBuilder } from './BaseBuilder';
 import { FolderSuggest, FolderListSetting } from '../components';
 import type { BuilderConfig } from '../types';
-import { i18n } from '../../i18n/i18n';
+import { i18n, isPolishLanguage, isChineseLanguage } from '../../i18n/i18n';
 
 /**
  * 任务设置构建器
@@ -119,6 +119,43 @@ export class TaskSettingsBuilder extends BaseBuilder {
 								void this.saveAndRefreshViews();
 							});
 					});
+			});
+		});
+
+		// ===== Projekty i zadania projektowe =====
+		this.createSettingGroup(isPolishLanguage() ? 'Projekty i zadania projektowe' : (isChineseLanguage() ? '项目与任务归属' : 'Projects & Task Notes'), (group) => {
+			const addSetting = (cb: (setting: Setting) => void) => {
+				group.addSetting(cb);
+			};
+
+			// Folder projektów
+			addSetting(setting => {
+				setting.setName(isPolishLanguage() ? 'Folder projektów' : (isChineseLanguage() ? '项目主文件夹路径' : 'Projects folder path'))
+					.setDesc(isPolishLanguage() ? 'Główny folder zawierający podkatalogi projektów (np. 11 - Notes - Trinitec Projekty)' : (isChineseLanguage() ? '包含项目子文件夹的根目录路径' : 'Root folder containing project subdirectories'))
+					.addSearch(cb => {
+						new FolderSuggest(this.plugin.app, cb.inputEl);
+						cb.setPlaceholder('11 - Notes - Trinitec Projekty')
+							.setValue(this.plugin.settings.projectsFolderPath || '11 - Notes - Trinitec Projekty')
+							.onChange((value) => {
+								const trimmed = value.trim().replace(/\/$/, '');
+								this.plugin.settings.projectsFolderPath = trimmed;
+								void this.saveAndRefreshViews();
+							});
+					});
+			});
+
+			// Nazwa pliku z zadaniami w projekcie
+			addSetting(setting => {
+				setting.setName(isPolishLanguage() ? 'Nazwa pliku zadań w folderze projektu' : (isChineseLanguage() ? '项目任务笔记文件名' : 'Project tasks note filename'))
+					.setDesc(isPolishLanguage() ? 'Nazwa pliku Markdown, do którego trafiają zadania w wybranym projekcie (domyślnie: _tasks -> _tasks.md)' : (isChineseLanguage() ? '项目文件夹中保存任务的文件名（默认：_tasks）' : 'Markdown filename where tasks are placed in project folders (default: _tasks)'))
+					.addText(text => text
+						.setPlaceholder('_tasks')
+						.setValue(this.plugin.settings.projectTasksFileName || '_tasks')
+						.onChange((value) => {
+							const trimmed = value.trim().replace(/\.md$/i, '');
+							this.plugin.settings.projectTasksFileName = trimmed || '_tasks';
+							void this.saveAndRefreshViews();
+						}));
 			});
 		});
 

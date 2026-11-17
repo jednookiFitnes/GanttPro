@@ -681,3 +681,233 @@
 }
 
 
+
+
+/* ===== Interaktywna pigułka folderu / projektu ===== */
+.gc-task-card__folder {
+	cursor: pointer;
+	border-radius: 4px;
+	padding: 1px 4px;
+	transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.gc-task-card__folder:hover {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.gc-task-card__folder--unassigned {
+	border: 1px dashed var(--text-faint);
+	color: var(--text-faint);
+	opacity: 0.85;
+}
+
+.gc-task-card__folder--unassigned:hover {
+	border-color: var(--text-muted);
+	color: var(--text-muted);
+	opacity: 1;
+}
+
+.gc-task-card--timeline .gc-task-card__folder {
+	cursor: pointer;
+	transition: background-color 0.15s ease;
+}
+
+.gc-task-card--timeline .gc-task-card__folder:hover {
+	background: rgba(0, 0, 0, 0.35);
+}
+
+.gc-task-card--timeline .gc-task-card__folder--unassigned {
+	background: rgba(0, 0, 0, 0.15);
+	border: 1px dashed rgba(255, 255, 255, 0.5);
+	color: rgba(255, 255, 255, 0.85);
+}
+
+.gc-task-card--timeline .gc-task-card__folder--unassigned:hover {
+	background: rgba(0, 0, 0, 0.25);
+	border-color: rgba(255, 255, 255, 0.8);
+	color: #ffffff;
+}
+
+/* ===== Project Selector Popover & Form Field ===== */
+.gc-project-selector {
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	box-shadow: var(--shadow-s, 0 8px 24px rgba(0, 0, 0, 0.22));
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	max-height: 320px;
+}
+
+.gc-project-selector__header {
+	padding: 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+}
+
+.gc-project-selector__search-wrapper {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 4px 8px;
+}
+
+.gc-project-selector__search-icon {
+	width: 14px;
+	height: 14px;
+	color: var(--text-muted);
+	flex-shrink: 0;
+}
+
+.gc-project-selector__search-input {
+	border: none !important;
+	outline: none !important;
+	box-shadow: none !important;
+	background: transparent !important;
+	padding: 0 !important;
+	font-size: var(--gc-font-xs, 12px) !important;
+	color: var(--text-normal) !important;
+	flex: 1;
+	min-width: 0;
+	height: 20px;
+}
+
+.gc-project-selector__clear-btn {
+	background: transparent;
+	border: none;
+	color: var(--text-muted);
+	cursor: pointer;
+	padding: 0 2px;
+	font-size: 14px;
+	line-height: 1;
+}
+
+.gc-project-selector__clear-btn:hover {
+	color: var(--text-normal);
+}
+
+.gc-project-selector__list {
+	padding: 4px;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.gc-project-selector__item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 6px 8px;
+	border: none;
+	background: transparent;
+	border-radius: 4px;
+	text-align: left;
+	cursor: pointer;
+	color: var(--text-normal);
+	font-size: var(--gc-font-xs, 12px);
+	transition: background-color 0.12s ease;
+}
+
+.gc-project-selector__item:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.gc-project-selector__item--selected {
+	background-color: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+	color: var(--interactive-accent);
+	font-weight: 600;
+}
+
+.gc-project-selector__item-icon {
+	font-size: 13px;
+	line-height: 1;
+	flex-shrink: 0;
+}
+
+.gc-project-selector__item-name {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.gc-project-selector__item-check {
+	width: 14px;
+	height: 14px;
+	color: var(--interactive-accent);
+	flex-shrink: 0;
+}
+
+.gc-project-selector__empty {
+	padding: 16px 8px;
+	text-align: center;
+	font-size: var(--gc-font-xs, 12px);
+	color: var(--text-muted);
+}
+
+/* Form field w oknie Create New Task */
+.gc-project-form-field__trigger {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	width: 100%;
+	padding: 6px 10px;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	color: var(--text-muted);
+	font-size: var(--gc-font-sm, 13px);
+	cursor: pointer;
+	text-align: left;
+	transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.gc-project-form-field__trigger:hover {
+	border-color: var(--background-modifier-border-hover);
+	background: var(--background-primary-alt);
+}
+
+.gc-project-form-field__trigger--has-value {
+	color: var(--text-normal);
+	font-weight: 500;
+}
+
+.gc-project-form-field__trigger-icon {
+	font-size: 14px;
+	flex-shrink: 0;
+}
+
+.gc-project-form-field__trigger-text {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.gc-project-form-field__trigger-arrow {
+	width: 14px;
+	height: 14px;
+	color: var(--text-muted);
+	flex-shrink: 0;
+}
+
+.gc-project-form-field__dropdown {
+	position: absolute;
+	top: calc(100% + 4px);
+	left: 0;
+	right: 0;
+	z-index: 1000;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	box-shadow: var(--shadow-s, 0 8px 24px rgba(0, 0, 0, 0.22));
+	overflow: hidden;
+}

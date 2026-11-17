@@ -96,6 +96,7 @@ export const BLOCKS = {
 	MODAL: 'modal',
 	/** React 右键菜单 */
 	CONTEXT_MENU: 'context-menu',
+	PROJECT_SELECTOR: 'project-selector',
 } as const;
 
 /**
@@ -165,6 +166,7 @@ export const TaskCardClasses = {
 		// 显示修饰符
 		compact: bem(BLOCKS.TASK_CARD, undefined, 'compact'),
 		textLimited: bem(BLOCKS.TASK_CARD, 'text', 'limited'),
+		folderUnassigned: bem(BLOCKS.TASK_CARD, 'folder', 'unassigned'),
 	}
 };
 
@@ -179,6 +181,22 @@ export const TimeBadgeClasses = {
 	cancelled: bem(BLOCKS.TASK_CARD, 'time-badge', 'cancelled'),
 	completion: bem(BLOCKS.TASK_CARD, 'time-badge', 'completion'),
 	overdue: bem(BLOCKS.TASK_CARD, 'time-badge', 'overdue'),
+};
+
+/**
+ * 项目选择器类名常量
+ */
+export const ProjectSelectorClasses = {
+	container: bem(BLOCKS.PROJECT_SELECTOR),
+	header: bem(BLOCKS.PROJECT_SELECTOR, 'header'),
+	searchInput: bem(BLOCKS.PROJECT_SELECTOR, 'search-input'),
+	list: bem(BLOCKS.PROJECT_SELECTOR, 'list'),
+	item: bem(BLOCKS.PROJECT_SELECTOR, 'item'),
+	itemSelected: bem(BLOCKS.PROJECT_SELECTOR, 'item', 'selected'),
+	itemIcon: bem(BLOCKS.PROJECT_SELECTOR, 'item-icon'),
+	itemName: bem(BLOCKS.PROJECT_SELECTOR, 'item-name'),
+	itemCheck: bem(BLOCKS.PROJECT_SELECTOR, 'item-check'),
+	empty: bem(BLOCKS.PROJECT_SELECTOR, 'empty'),
 };
 
 /**
