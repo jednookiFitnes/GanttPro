@@ -40,3 +40,4 @@ lint-report.txt
 # git worktrees
 .worktrees/
 .zcode/
+AGENTS.md
